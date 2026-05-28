@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "724631241230",
+    "project_id": "thebookwasbetter-d4381",
+    "storage_bucket": "thebookwasbetter-d4381.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:724631241230:android:a086965c4651cec63a725f",
+        "android_client_info": {
+          "package_name": "com.example.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAxQ35yhkrNIpzGziv2aHQ4ezUNoR6wE3Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
