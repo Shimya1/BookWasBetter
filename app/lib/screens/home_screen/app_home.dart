@@ -1,5 +1,5 @@
 
-import 'package:app/widgets/app_toolbar.dart';
+import 'package:app/widgets/user_appbar.dart';
 import 'package:flutter/material.dart';
 
 class LaunchPage extends StatelessWidget {
@@ -8,7 +8,7 @@ class LaunchPage extends StatelessWidget {
   @override
   Widget build(context) {
     return Scaffold(
-      appBar: MyToolbar(), 
+      appBar: UserAppBar(), 
       body:Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(

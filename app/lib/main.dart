@@ -1,9 +1,8 @@
 import 'package:app/models/appState.dart';
 import 'package:app/screens/auth_screen/auth_screen.dart';
-import 'package:app/screens/home_screen/app_home.dart';
+import 'package:app/screens/main_scaffold.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-//import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -25,7 +24,7 @@ Future<void> main() async {
             if (snapshot.connectionState == ConnectionState.active) {
               User? user = snapshot.data;
               if (user != null) {
-                return const LaunchPage();
+                return const MainScaffold();
               } else {
                 return const AuthScreen();
               }
