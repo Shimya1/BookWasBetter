@@ -1,5 +1,5 @@
 import 'package:app/models/appState.dart';
-import 'package:app/models/book_model.dart';
+import 'package:app/models/book_view_model.dart';
 import 'package:app/screens/book_log/book_detail_screen.dart';
 import 'package:app/screens/book_log/book_search_screen.dart';
 import 'package:app/widgets/book_card.dart';
@@ -104,7 +104,7 @@ class BookLogScreen extends StatelessWidget {
 }
 
 class _BookList extends StatelessWidget {
-  final List<Book> books;
+  final List<BookView> books;
   final String emptyMessage;
 
   const _BookList({required this.books, required this.emptyMessage});

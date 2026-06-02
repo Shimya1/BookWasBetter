@@ -1,16 +1,33 @@
 import 'package:app/models/book_model.dart';
+import 'package:app/models/book_view_model.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
-class BookCard extends StatelessWidget {
-  final Book book;
+class BookCard extends StatefulWidget {
+  final BookView book;
   final VoidCallback onTap;
 
   const BookCard({super.key, required this.book, required this.onTap});
 
   @override
+  State<BookCard> createState() => _BookCardState();
+}
+
+class _BookCardState extends State<BookCard> {
+  late final Future<String> _coverUrlFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _coverUrlFuture = FirebaseStorage.instance
+        .ref('covers/${widget.book.googleBooksId}.jpg')
+        .getDownloadURL();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
@@ -33,15 +50,21 @@ class BookCard extends StatelessWidget {
                 topLeft: Radius.circular(12),
                 bottomLeft: Radius.circular(12),
               ),
-              child: book.coverUrl.isNotEmpty
-                  ? Image.network(
-                      book.coverUrl,
+              child: FutureBuilder<String>(
+                future: _coverUrlFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return Image.network(
+                      snapshot.data!,
                       width: 70,
                       height: 105,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => _placeholderCover(),
-                    )
-                  : _placeholderCover(),
+                    );
+                  }
+                  return _placeholderCover();
+                },
+              ),
             ),
 
             // Book info
@@ -52,7 +75,7 @@ class BookCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      book.title,
+                      widget.book.title,
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -63,7 +86,7 @@ class BookCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      book.author,
+                      widget.book.author,
                       style: const TextStyle(
                         fontSize: 13,
                         color: Color.fromARGB(255, 120, 80, 50),
@@ -74,10 +97,10 @@ class BookCard extends StatelessWidget {
                     const SizedBox(height: 8),
 
                     // Status badge
-                    _StatusBadge(status: book.status),
+                    _StatusBadge(status: widget.book.status),
 
                     // Chapter progress (only for currently reading)
-                    if (book.status == BookStatus.currentlyReading) ...[
+                    if (widget.book.status == BookStatus.currentlyReading) ...[
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -88,8 +111,8 @@ class BookCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            book.currentChapter > 0
-                                ? 'Chapter ${book.currentChapter}'
+                            widget.book.currentChapter > 0
+                                ? 'Chapter ${widget.book.currentChapter}'
                                 : 'Not started',
                             style: const TextStyle(
                               fontSize: 12,

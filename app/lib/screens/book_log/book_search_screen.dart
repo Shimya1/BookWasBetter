@@ -45,7 +45,8 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
       final results = await _googleBooksService.search(query);
       setState(() => _results = results);
     } catch (e) {
-      setState(() => _error = 'Search failed. Check your connection and try again.');
+      setState(
+          () => _error = 'Search failed. Check your connection and try again.');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -66,7 +67,7 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('"${result.title}" is already in your library.'),
-          backgroundColor: const Color.fromARGB(255, 110, 60, 60),
+          backgroundColor: const Color.fromARGB(255, 146, 129, 129),
         ),
       );
       return;
@@ -101,17 +102,15 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
         coverUrl = data['coverUrl'] as String? ?? result.coverUrl;
       }
 
-      final book = Book(
-        userId: user.uid,
+      final updatedResult = BookSearchResult(
         googleBooksId: result.googleBooksId,
         title: result.title,
         author: result.author,
-        coverUrl: coverUrl,
+        coverUrl: coverUrl, // ← the Storage URL, not the original
         description: result.description,
-        status: status,
       );
 
-      await context.read<StateModel>().addBook(book);
+      await context.read<StateModel>().addBook(updatedResult, status);
 
       if (mounted) {
         Navigator.of(context).pop(); // dismiss loading
@@ -312,14 +311,15 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
                         : Consumer<StateModel>(
                             builder: (context, state, _) {
                               return ListView.separated(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
                                 itemCount: _results.length,
                                 separatorBuilder: (_, __) => const Divider(
                                     color: Color.fromARGB(60, 110, 60, 60)),
                                 itemBuilder: (context, index) {
                                   final result = _results[index];
-                                  final inLibrary = state.books.any(
-                                      (b) => b.googleBooksId == result.googleBooksId);
+                                  final inLibrary = state.books.any((b) =>
+                                      b.googleBooksId == result.googleBooksId);
                                   return ListTile(
                                     contentPadding:
                                         const EdgeInsets.symmetric(vertical: 8),
@@ -353,12 +353,14 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           result.author,
                                           style: const TextStyle(
-                                            color: Color.fromARGB(255, 120, 80, 50),
+                                            color: Color.fromARGB(
+                                                255, 120, 80, 50),
                                             fontSize: 13,
                                           ),
                                         ),
@@ -368,7 +370,8 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
                                             'Already in your library',
                                             style: TextStyle(
                                               fontSize: 11,
-                                              color: Color.fromARGB(200, 110, 60, 60),
+                                              color: Color.fromARGB(
+                                                  200, 110, 60, 60),
                                               fontStyle: FontStyle.italic,
                                             ),
                                           ),
@@ -377,14 +380,20 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
                                     ),
                                     trailing: inLibrary
                                         ? const Icon(Icons.check_circle,
-                                            color: Color.fromARGB(200, 110, 60, 60),
+                                            color: Color.fromARGB(
+                                                200, 110, 60, 60),
                                             size: 22)
                                         : IconButton(
-                                            icon: const Icon(Icons.add_circle_outline),
-                                            color: const Color.fromARGB(255, 110, 60, 60),
-                                            onPressed: () => _showAddDialog(result),
+                                            icon: const Icon(
+                                                Icons.add_circle_outline),
+                                            color: const Color.fromARGB(
+                                                255, 110, 60, 60),
+                                            onPressed: () =>
+                                                _showAddDialog(result),
                                           ),
-                                    onTap: inLibrary ? null : () => _showAddDialog(result),
+                                    onTap: inLibrary
+                                        ? null
+                                        : () => _showAddDialog(result),
                                   );
                                 },
                               );
@@ -414,7 +423,8 @@ class _StatusOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: Icon(icon, color: color),
-      title: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w500)),
+      title: Text(label,
+          style: TextStyle(color: color, fontWeight: FontWeight.w500)),
       onTap: onTap,
       contentPadding: EdgeInsets.zero,
     );

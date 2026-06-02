@@ -1,12 +1,30 @@
 import 'package:app/models/appState.dart';
 import 'package:app/models/book_model.dart';
+import 'package:app/models/book_view_model.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-class BookDetailScreen extends StatelessWidget {
-  final Book book;
+class BookDetailScreen extends StatefulWidget {
+  final BookView book;
 
   const BookDetailScreen({super.key, required this.book});
+
+  @override
+  State<BookDetailScreen> createState() => _BookDetailScreenState();
+}
+
+class _BookDetailScreenState extends State<BookDetailScreen> {
+  late final Future<String?> _coverUrlFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _coverUrlFuture = FirebaseStorage.instance
+        .ref('covers/${widget.book.googleBooksId}.jpg')
+        .getDownloadURL()
+        .catchError((_) => null);
+  }
 
   // ─── Status colour helpers (shared with badge) ──────────────────────────────
 
@@ -63,20 +81,20 @@ class BookDetailScreen extends StatelessWidget {
                     s.displayName,
                     style: TextStyle(
                       color: statusFg(s),
-                      fontWeight: book.status == s
+                      fontWeight: widget.book.status == s
                           ? FontWeight.bold
                           : FontWeight.normal,
                     ),
                   ),
-                  trailing: book.status == s
+                  trailing: widget.book.status == s
                       ? Icon(Icons.check, color: statusFg(s), size: 18)
                       : null,
                   onTap: () async {
                     Navigator.pop(ctx);
-                    if (s != book.status) {
+                    if (s != widget.book.status) {
                       await context
                           .read<StateModel>()
-                          .updateBookStatus(book.id, s);
+                          .updateBookStatus(widget.book.book.id, s);
                     }
                   },
                 )),
@@ -90,7 +108,7 @@ class BookDetailScreen extends StatelessWidget {
 
   void _showChapterDialog(BuildContext context) {
     final controller = TextEditingController(
-      text: book.currentChapter > 0 ? book.currentChapter.toString() : '',
+      text: widget.book.currentChapter > 0 ? widget.book.currentChapter.toString() : '',
     );
 
     showDialog(
@@ -143,7 +161,7 @@ class BookDetailScreen extends StatelessWidget {
                 Navigator.pop(ctx);
                 await context
                     .read<StateModel>()
-                    .updateBookChapter(book.id, chapter);
+                    .updateBookChapter(widget.book.id, chapter);
               }
             },
             child: const Text('Save'),
@@ -168,7 +186,7 @@ class BookDetailScreen extends StatelessWidget {
           ),
         ),
         content: Text(
-          'Remove "${book.title}" from your log? This will also delete all notes for this book.',
+          'Remove "${widget.book.title}" from your log? This will also delete all notes for this book.',
           style:
               const TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
         ),
@@ -189,7 +207,7 @@ class BookDetailScreen extends StatelessWidget {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              await context.read<StateModel>().deleteBook(book.id);
+              await context.read<StateModel>().deleteBook(widget.book.id, widget.book.googleBooksId);
               if (context.mounted) Navigator.of(context).pop();
             },
             child: const Text('Remove'),
@@ -204,10 +222,10 @@ class BookDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Listen for live updates to this specific book
-    final liveBook = context.select<StateModel, Book?>(
+    final liveBook = context.select<StateModel, BookView?>(
       (state) =>
-          state.books.where((b) => b.id == book.id).firstOrNull ?? book,
-    ) ?? book;
+          state.books.where((b) => b.id == widget.book.id).firstOrNull,
+    ) ?? widget.book;
 
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 240, 228, 185),
@@ -225,13 +243,20 @@ class BookDetailScreen extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   // Blurred background from cover
-                  if (liveBook.coverUrl.isNotEmpty)
-                    Image.network(
-                      liveBook.coverUrl,
-                      fit: BoxFit.cover,
-                      color: Colors.black.withAlpha(120),
-                      colorBlendMode: BlendMode.darken,
-                    ),
+                  FutureBuilder<String?>(
+                    future: _coverUrlFuture,
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData || snapshot.data == null) {
+                        return const SizedBox.expand();
+                      }
+                      return Image.network(
+                        snapshot.data!,
+                        fit: BoxFit.cover,
+                        color: Colors.black.withAlpha(120),
+                        colorBlendMode: BlendMode.darken,
+                      );
+                    },
+                  ),
                   // Cover + title row
                   Positioned(
                     bottom: 20,
@@ -243,23 +268,27 @@ class BookDetailScreen extends StatelessWidget {
                         // Cover image
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: liveBook.coverUrl.isNotEmpty
-                              ? Image.network(
-                                  liveBook.coverUrl,
+                          child: FutureBuilder<String?>(
+                            future: _coverUrlFuture,
+                            builder: (context, snapshot) {
+                              if (snapshot.hasData && snapshot.data != null) {
+                                return Image.network(
+                                  snapshot.data!,
                                   width: 90,
                                   height: 135,
                                   fit: BoxFit.cover,
-                                )
-                              : Container(
-                                  width: 90,
-                                  height: 135,
-                                  color: const Color.fromARGB(
-                                      255, 200, 180, 150),
-                                  child: const Icon(Icons.menu_book,
-                                      size: 40,
-                                      color: Color.fromARGB(
-                                          120, 110, 60, 60)),
-                                ),
+                                );
+                              }
+                              return Container(
+                                width: 90,
+                                height: 135,
+                                color: const Color.fromARGB(255, 200, 180, 150),
+                                child: const Icon(Icons.menu_book,
+                                    size: 40,
+                                    color: Color.fromARGB(120, 110, 60, 60)),
+                              );
+                            },
+                          ),
                         ),
                         const SizedBox(width: 16),
                         // Title + author

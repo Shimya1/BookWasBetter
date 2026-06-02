@@ -49,23 +49,19 @@ class Book {
   final String id;
   final String userId;
   final String googleBooksId;
-  final String title;
-  final String author;
-  final String coverUrl;
-  final String description;
   final BookStatus status;
   final int currentChapter;
   final DateTime dateAdded;
   final DateTime? dateFinished;
+  final String? review;
+  final double? rating;
 
   Book({
     String? id,
     required this.userId,
     required this.googleBooksId,
-    required this.title,
-    required this.author,
-    required this.coverUrl,
-    required this.description,
+    this.review,
+    this.rating,
     this.status = BookStatus.wantToRead,
     this.currentChapter = 0,
     DateTime? dateAdded,
@@ -77,19 +73,19 @@ class Book {
     BookStatus? status,
     int? currentChapter,
     DateTime? dateFinished,
+    String? review,
+    double? rating,
   }) {
     return Book(
       id: id,
       userId: userId,
       googleBooksId: googleBooksId,
-      title: title,
-      author: author,
-      coverUrl: coverUrl,
-      description: description,
       status: status ?? this.status,
       currentChapter: currentChapter ?? this.currentChapter,
       dateAdded: dateAdded,
       dateFinished: dateFinished ?? this.dateFinished,
+      review: review,
+      rating: rating,
     );
   }
 
@@ -97,14 +93,12 @@ class Book {
     return {
       'userId': userId,
       'googleBooksId': googleBooksId,
-      'title': title,
-      'author': author,
-      'coverUrl': coverUrl,
-      'description': description,
       'status': status.firestoreValue,
       'currentChapter': currentChapter,
       'dateAdded': dateAdded.toIso8601String(),
       'dateFinished': dateFinished?.toIso8601String(),
+      'review': review,
+      'rating': rating,
     };
   }
 
@@ -113,10 +107,6 @@ class Book {
       id: id,
       userId: map['userId'] as String,
       googleBooksId: map['googleBooksId'] as String? ?? '',
-      title: map['title'] as String,
-      author: map['author'] as String,
-      coverUrl: map['coverUrl'] as String? ?? '',
-      description: map['description'] as String? ?? '',
       status: BookStatusExtension.fromString(
           map['status'] as String? ?? 'wantToRead'),
       currentChapter: (map['currentChapter'] as num?)?.toInt() ?? 0,
@@ -126,6 +116,8 @@ class Book {
       dateFinished: map['dateFinished'] != null
           ? DateTime.parse(map['dateFinished'] as String)
           : null,
+      review: map['review'] as String? ?? '',
+      rating: (map['rating'] as num?)?.toDouble(),
     );
   }
 }

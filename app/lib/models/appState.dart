@@ -1,26 +1,26 @@
 import 'dart:collection';
 import 'package:app/models/book_model.dart';
+import 'package:app/models/book_view_model.dart';
 import 'package:app/models/club_member_model.dart';
 import 'package:app/models/club_model.dart';
 import 'package:app/models/join_request_model.dart';
+import 'package:app/models/library_book_model.dart';
 import 'package:app/models/note_model.dart';
 import 'package:app/models/user_profile_model.dart';
+import 'package:app/services/google_books_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-
+import 'package:firebase_storage/firebase_storage.dart';
 
 class StateModel extends ChangeNotifier {
   final FirebaseFirestore _db;
   final FirebaseAuth _auth;
 
   List<Note> _notes = [];
-  List<Book> _books = [];
+  List<BookView> _books = [];
   List<Club> _clubs = [];
   UserProfile? _profile;
-  
-    
-  
 
   StateModel({FirebaseFirestore? firestore, FirebaseAuth? auth})
       : _db = firestore ?? FirebaseFirestore.instance,
@@ -43,21 +43,21 @@ class StateModel extends ChangeNotifier {
   }
 
   UnmodifiableListView<Note> get notes => UnmodifiableListView(_notes);
-  UnmodifiableListView<Book> get books => UnmodifiableListView(_books);
+  UnmodifiableListView<BookView> get books => UnmodifiableListView(_books);
   UnmodifiableListView<Club> get clubs => UnmodifiableListView(_clubs);
   UserProfile? get profile => _profile;
   // ─── Filtered book views ────────────────────────────────────────────────────
 
-  List<Book> get currentlyReading =>
+  List<BookView> get currentlyReading =>
       _books.where((b) => b.status == BookStatus.currentlyReading).toList();
 
-  List<Book> get wantToRead =>
+  List<BookView> get wantToRead =>
       _books.where((b) => b.status == BookStatus.wantToRead).toList();
 
-  List<Book> get finishedBooks =>
+  List<BookView> get finishedBooks =>
       _books.where((b) => b.status == BookStatus.finished).toList();
 
-  List<Book> get abandonedBooks =>
+  List<BookView> get abandonedBooks =>
       _books.where((b) => b.status == BookStatus.abandoned).toList();
 
   // ─── Notes ──────────────────────────────────────────────────────────────────
@@ -82,26 +82,67 @@ class StateModel extends ChangeNotifier {
 
   void _listenToBooks(String uid) {
     _db
+        .collection('users')
+        .doc(uid)
         .collection('books')
-        .where('userId', isEqualTo: uid)
         .snapshots()
-        .listen((snapshot) {
-      _books =
+        .listen((snapshot) async {
+      final userBooks =
           snapshot.docs.map((doc) => Book.fromMap(doc.id, doc.data())).toList();
-      // Sort: currently reading first, then most recently added
-      _books.sort((a, b) {
-        if (a.status == BookStatus.currentlyReading &&
-            b.status != BookStatus.currentlyReading) return -1;
-        if (b.status == BookStatus.currentlyReading &&
-            a.status != BookStatus.currentlyReading) return 1;
-        return b.dateAdded.compareTo(a.dateAdded);
-      });
+
+      final libraryBookDocs = await Future.wait(
+        userBooks.map((book) =>
+            _db.collection('library_books').doc(book.googleBooksId).get()),
+      );
+
+      final bookViews = <BookView>[];
+      for (int i = 0; i < userBooks.length; i++) {
+        final doc = libraryBookDocs[i];
+        if (doc.exists) {
+          bookViews.add(BookView(
+            book: userBooks[i],
+            libraryBook: LibraryBook.fromMap(doc.data()!),
+          ));
+        }
+      }
+
+      _books = bookViews;
       notifyListeners();
     });
   }
 
-  Future<void> addBook(Book book) async {
-    await _db.collection('books').doc(book.id).set(book.toMap());
+  Future<void> addBook(BookSearchResult result, BookStatus status) async {
+    final uid = _auth.currentUser!.uid;
+    final book = Book(
+      userId: uid,
+      googleBooksId: result.googleBooksId,
+      status: status,
+    );
+
+    final batch = _db.batch();
+
+    // 1. Create or update the library book
+    final libraryBookRef =
+        _db.collection('library_books').doc(result.googleBooksId);
+    batch.set(
+      libraryBookRef,
+      {
+        'googleBooksId': result.googleBooksId,
+        'title': result.title,
+        'author': result.author,
+        'coverUrl': result.coverUrl,
+        'description': result.description,
+        'numUsersBorrowing': FieldValue.increment(1),
+      },
+      SetOptions(merge: true),
+    );
+
+    // 2. Create the user book
+    final userBookRef =
+        _db.collection('users').doc(uid).collection('books').doc(book.id);
+    batch.set(userBookRef, book.toMap());
+
+    await batch.commit();
   }
 
   Future<void> updateBookStatus(String bookId, BookStatus newStatus) async {
@@ -119,13 +160,57 @@ class StateModel extends ChangeNotifier {
         .update({'currentChapter': chapter});
   }
 
-  Future<void> deleteBook(String bookId) async {
-    await _db.collection('books').doc(bookId).delete();
+  Future<void> deleteBook(String bookId, String googleBooksId) async {
+  final uid = _auth.currentUser!.uid;
+
+  final userBookRef =
+      _db.collection('users').doc(uid).collection('books').doc(bookId);
+
+  final libraryBookRef = _db.collection('library_books').doc(googleBooksId);
+
+  bool wasLastBorrower = false;
+
+  await _db.runTransaction((transaction) async {
+    // 1. Read the library book first
+    final libraryBookDoc = await transaction.get(libraryBookRef);
+
+    if (!libraryBookDoc.exists) {
+      // Nothing to clean up, just delete the user book
+      transaction.delete(userBookRef);
+      return;
+    }
+
+    final count =
+        (libraryBookDoc.data()!['numUsersBorrowing'] as num).toInt();
+
+    // 2. Delete the user book
+    transaction.delete(userBookRef);
+
+    if (count <= 1) {
+      // 3a. Last borrower — delete the library book entirely
+      wasLastBorrower = true;
+      transaction.delete(libraryBookRef);
+    } else {
+      // 3b. Others still have it — just decrement
+      transaction.update(libraryBookRef, {
+        'numUsersBorrowing': FieldValue.increment(-1),
+      });
+    }
+  });
+
+  // Delete the cover from Storage if no one is using the book anymore
+  if (wasLastBorrower) {
+    try {
+      await FirebaseStorage.instance
+          .ref('covers/$googleBooksId.jpg')
+          .delete();
+    } catch (_) {
+      // If the file doesn't exist, ignore
+    }
   }
+}
 
   // ─── Clubs ───────────────────────────────────────────────────────────────────
-
-
 
   void _listenToClubs(String uid) {
     _db
