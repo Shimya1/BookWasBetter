@@ -37,7 +37,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
   final url = await ref.getDownloadURL();
   if (mounted) await context.read<StateModel>().updateAvatarUrl(url);
-}catch (e) {
+
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -189,9 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Stack(
                     children: [
                       GestureDetector(
-                        onTap: () {
-                          _pickAndUploadAvatar();
-                        },
+                        onTap: _pickAndUploadAvatar,
                         child: CircleAvatar(
                           radius: 56,
                           backgroundColor:

@@ -1,13 +1,14 @@
 import 'dart:collection';
 import 'package:app/models/book_model.dart';
+import 'package:app/models/club_member_model.dart';
+import 'package:app/models/club_model.dart' hide ClubRole;
+import 'package:app/models/join_request_model.dart';
 import 'package:app/models/note_model.dart';
+import 'package:app/models/user_profile_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:app/models/club_model.dart';
-import 'package:app/models/club_member_model.dart';
-import 'package:app/models/join_request_model.dart';
-import 'package:app/models/user_profile_model.dart';
+
 
 class StateModel extends ChangeNotifier {
   final FirebaseFirestore _db;
@@ -17,7 +18,9 @@ class StateModel extends ChangeNotifier {
   List<Book> _books = [];
   List<Club> _clubs = [];
   UserProfile? _profile;
-  UserProfile? get profile => _profile;
+  
+    
+  
 
   StateModel({FirebaseFirestore? firestore, FirebaseAuth? auth})
       : _db = firestore ?? FirebaseFirestore.instance,
@@ -27,22 +30,22 @@ class StateModel extends ChangeNotifier {
       if (user != null) {
         _listenToNotes(user.uid);
         _listenToBooks(user.uid);
-        _listenToClubs(user.uid);
         _listenToProfile(user.uid);
+        _listenToClubs(user.uid);
       } else {
         _notes = [];
         _books = [];
         _clubs = [];
         _profile = null;
-        notifyListeners();  
+        notifyListeners();
       }
     });
   }
 
-  UnmodifiableListView<Club> get clubs => UnmodifiableListView(_clubs);
   UnmodifiableListView<Note> get notes => UnmodifiableListView(_notes);
   UnmodifiableListView<Book> get books => UnmodifiableListView(_books);
-
+  UnmodifiableListView<Club> get clubs => UnmodifiableListView(_clubs);
+  UserProfile? get profile => _profile;
   // ─── Filtered book views ────────────────────────────────────────────────────
 
   List<Book> get currentlyReading =>
@@ -121,6 +124,8 @@ class StateModel extends ChangeNotifier {
   }
 
   // ─── Clubs ───────────────────────────────────────────────────────────────────
+
+
 
   void _listenToClubs(String uid) {
     _db
@@ -221,7 +226,7 @@ class StateModel extends ChangeNotifier {
         .update({'status': accept ? 'accepted' : 'declined'});
   }
 
-  // ─── Profile ─────────────────────────────────────────────────────────────────
+// ─── Profile ─────────────────────────────────────────────────────────────────
 
   void _listenToProfile(String uid) {
     _db.collection('users').doc(uid).snapshots().listen((doc) {
@@ -246,6 +251,4 @@ class StateModel extends ChangeNotifier {
     final uid = _auth.currentUser!.uid;
     await _db.collection('users').doc(uid).update({'avatarUrl': avatarUrl});
   }
-
-
 }

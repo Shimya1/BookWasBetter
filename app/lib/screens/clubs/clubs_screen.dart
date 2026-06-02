@@ -1,10 +1,11 @@
 import 'package:app/models/appState.dart';
+import 'package:app/screens/clubs/club_detail_screen.dart';
 import 'package:app/screens/clubs/create_club_screen.dart';
 import 'package:app/screens/clubs/join_club_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:app/screens/clubs/club_detail_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+
 
 class ClubsScreen extends StatelessWidget {
   const ClubsScreen({super.key});
@@ -27,8 +28,12 @@ class ClubsScreen extends StatelessWidget {
           return Stack(
             children: [
               state.clubs.isEmpty
-                  ? _EmptyState(onCreate: () => _openCreate(context), onJoin: () => _openJoin(context))
-                  : _ClubList(onCreate: () => _openCreate(context), onJoin: () => _openJoin(context)),
+                  ? _EmptyState(
+                      onCreate: () => _openCreate(context),
+                      onJoin: () => _openJoin(context))
+                  : _ClubList(
+                      onCreate: () => _openCreate(context),
+                      onJoin: () => _openJoin(context)),
 
               // FAB row — create and join buttons
               Positioned(
@@ -132,8 +137,7 @@ class _ClubList extends StatelessWidget {
       itemCount: clubs.length,
       itemBuilder: (context, index) {
         final club = clubs[index];
-        final isFounder = club.founderUid ==
-            FirebaseAuth.instance.currentUser?.uid;
+        final isFounder = club.founderUid == FirebaseAuth.instance.currentUser?.uid;
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(

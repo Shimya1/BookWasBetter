@@ -1,6 +1,6 @@
 import 'package:app/models/appState.dart';
 import 'package:app/models/club_member_model.dart';
-import 'package:app/models/club_model.dart';
+import 'package:app/models/club_model.dart' hide ClubRole;
 import 'package:app/models/join_request_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,7 +22,7 @@ class ClubDetailScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: const Color.fromARGB(255, 240, 228, 185),
         appBar: AppBar(
-          backgroundColor: const Color.fromARGB(2250,110,60,60),
+          backgroundColor: const Color.fromARGB(255, 110, 60, 60),
           iconTheme: const IconThemeData(color: Colors.white),
           title: Text(
             club.name,
@@ -32,6 +32,8 @@ class ClubDetailScreen extends StatelessWidget {
             ),
           ),
           bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white60,
             indicatorColor: Colors.white,
             tabs: [
               Tab(text: 'Overview'),
@@ -50,10 +52,10 @@ class ClubDetailScreen extends StatelessWidget {
       ),
     );
   }
-
 }
 
-//Overview tab shows invite code, join requests (founder only), current book, and recent activity
+// ─── Overview Tab ─────────────────────────────────────────────────────────────
+
 class _OverviewTab extends StatelessWidget {
   final Club club;
   final bool isFounder;
@@ -93,9 +95,8 @@ class _OverviewTab extends StatelessWidget {
   }
 }
 
+// ─── Invite Code Card ─────────────────────────────────────────────────────────
 
-
-// Members tab shows list of members, with founder at top and "Admin" badge, and option to remove members (founder only)
 class _InviteCodeCard extends StatelessWidget {
   final String inviteCode;
   const _InviteCodeCard({required this.inviteCode});
@@ -165,8 +166,8 @@ class _InviteCodeCard extends StatelessWidget {
   }
 }
 
+// ─── Join Requests Panel ──────────────────────────────────────────────────────
 
-//Join requests panel shows list of pending join requests with option to approve/deny (founder only)
 class _JoinRequestsPanel extends StatelessWidget {
   final Club club;
   const _JoinRequestsPanel({required this.club});
@@ -235,8 +236,6 @@ class _JoinRequestsPanel extends StatelessWidget {
   }
 }
 
-
-//joinRequstTile is a ListTile showing the requester's uid and buttons to accept/decline the request (founder only)
 class _JoinRequestTile extends StatelessWidget {
   final Club club;
   final JoinRequest request;
@@ -299,7 +298,8 @@ class _JoinRequestTile extends StatelessWidget {
   }
 }
 
-//members tab shows list of members, with founder at top and "Admin" badge, and option to remove members (founder only)
+// ─── Members Tab ──────────────────────────────────────────────────────────────
+
 class _MembersTab extends StatelessWidget {
   final Club club;
   final bool isFounder;
@@ -428,8 +428,8 @@ class _MembersTab extends StatelessWidget {
   }
 }
 
+// ─── History Tab ──────────────────────────────────────────────────────────────
 
-//history tab shows list of past books with dates, and option to leave reviews (coming soon)
 class _HistoryTab extends StatelessWidget {
   const _HistoryTab();
 
@@ -447,7 +447,8 @@ class _HistoryTab extends StatelessWidget {
   }
 }
 
-//placeholder card with icon, title, and message, used for current book and activity feed sections on overview tab
+// ─── Placeholder card ─────────────────────────────────────────────────────────
+
 class _PlaceholderCard extends StatelessWidget {
   final IconData icon;
   final String title;

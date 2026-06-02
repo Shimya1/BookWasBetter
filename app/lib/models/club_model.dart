@@ -3,13 +3,14 @@ import 'dart:math';
 
 const _uuid = Uuid();
 
+enum ClubRole { founder, member }
+
 class Club {
   final String id;
   final String name;
   final String founderUid;
   final String inviteCode;
   final DateTime createdAt;
-  //final List<Event> events;
 
   Club({
     String? id,
