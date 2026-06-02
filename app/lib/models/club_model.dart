@@ -1,3 +1,4 @@
+import 'package:app/models/tag_model.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:math';
 
@@ -9,6 +10,7 @@ class Club {
   final String founderUid;
   final String inviteCode;
   final DateTime createdAt;
+  final List<Tag> tags = [];
 
   Club({
     String? id,

@@ -6,6 +6,7 @@ import 'package:app/models/club_model.dart';
 import 'package:app/models/join_request_model.dart';
 import 'package:app/models/library_book_model.dart';
 import 'package:app/models/note_model.dart';
+import 'package:app/models/tag_model.dart';
 import 'package:app/models/user_profile_model.dart';
 import 'package:app/services/google_books_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -64,8 +65,10 @@ class StateModel extends ChangeNotifier {
 
   void _listenToNotes(String uid) {
     _db
-        .collection('Notes')
-        .where('userId', isEqualTo: uid)
+        .collection('users')
+        .doc(uid)
+        .collection('notes')
+        .orderBy('createdAt', descending: true)
         .snapshots()
         .listen((snapshot) {
       _notes =
@@ -74,10 +77,49 @@ class StateModel extends ChangeNotifier {
     });
   }
 
-  Future<void> addNote(Note note) async {
-    await _db.collection('Notes').doc(note.id).set(note.toMap());
+  Future<void> createTag(Tag tag) async {
+    final uid = _auth.currentUser!.uid;
+    final updatedTags = [...?_profile?.tags, tag];
+    await _db.collection('users').doc(uid).update({
+      'tags': updatedTags.map((t) => t.toMap()).toList(),
+    });
   }
 
+  Future<void> deleteTag(String tagId) async {
+    final uid = _auth.currentUser!.uid;
+    final updatedTags =
+        _profile?.tags.where((t) => t.id != tagId).toList() ?? [];
+    await _db.collection('users').doc(uid).update({
+      'tags': updatedTags.map((t) => t.toMap()).toList(),
+    });
+  }
+
+  Future<void> addNote(Note note) async {
+    await _db
+        .collection('users')
+        .doc(note.userId)
+        .collection('notes')
+        .doc(note.id)
+        .set(note.toMap());
+  }
+
+  Future<void> updateNote(Note note) async {
+    await _db
+        .collection('users')
+        .doc(note.userId)
+        .collection('notes')
+        .doc(note.id)
+        .update(note.toMap());
+  }
+
+  Future<void> deleteNote(Note note) async {
+    await _db
+        .collection('users')
+        .doc(note.userId)
+        .collection('notes')
+        .doc(note.id)
+        .delete();
+  }
   // ─── Books ───────────────────────────────────────────────────────────────────
 
   void _listenToBooks(String uid) {
@@ -161,54 +203,54 @@ class StateModel extends ChangeNotifier {
   }
 
   Future<void> deleteBook(String bookId, String googleBooksId) async {
-  final uid = _auth.currentUser!.uid;
+    final uid = _auth.currentUser!.uid;
 
-  final userBookRef =
-      _db.collection('users').doc(uid).collection('books').doc(bookId);
+    final userBookRef =
+        _db.collection('users').doc(uid).collection('books').doc(bookId);
 
-  final libraryBookRef = _db.collection('library_books').doc(googleBooksId);
+    final libraryBookRef = _db.collection('library_books').doc(googleBooksId);
 
-  bool wasLastBorrower = false;
+    bool wasLastBorrower = false;
 
-  await _db.runTransaction((transaction) async {
-    // 1. Read the library book first
-    final libraryBookDoc = await transaction.get(libraryBookRef);
+    await _db.runTransaction((transaction) async {
+      // 1. Read the library book first
+      final libraryBookDoc = await transaction.get(libraryBookRef);
 
-    if (!libraryBookDoc.exists) {
-      // Nothing to clean up, just delete the user book
+      if (!libraryBookDoc.exists) {
+        // Nothing to clean up, just delete the user book
+        transaction.delete(userBookRef);
+        return;
+      }
+
+      final count =
+          (libraryBookDoc.data()!['numUsersBorrowing'] as num).toInt();
+
+      // 2. Delete the user book
       transaction.delete(userBookRef);
-      return;
-    }
 
-    final count =
-        (libraryBookDoc.data()!['numUsersBorrowing'] as num).toInt();
+      if (count <= 1) {
+        // 3a. Last borrower — delete the library book entirely
+        wasLastBorrower = true;
+        transaction.delete(libraryBookRef);
+      } else {
+        // 3b. Others still have it — just decrement
+        transaction.update(libraryBookRef, {
+          'numUsersBorrowing': FieldValue.increment(-1),
+        });
+      }
+    });
 
-    // 2. Delete the user book
-    transaction.delete(userBookRef);
-
-    if (count <= 1) {
-      // 3a. Last borrower — delete the library book entirely
-      wasLastBorrower = true;
-      transaction.delete(libraryBookRef);
-    } else {
-      // 3b. Others still have it — just decrement
-      transaction.update(libraryBookRef, {
-        'numUsersBorrowing': FieldValue.increment(-1),
-      });
-    }
-  });
-
-  // Delete the cover from Storage if no one is using the book anymore
-  if (wasLastBorrower) {
-    try {
-      await FirebaseStorage.instance
-          .ref('covers/$googleBooksId.jpg')
-          .delete();
-    } catch (_) {
-      // If the file doesn't exist, ignore
+    // Delete the cover from Storage if no one is using the book anymore
+    if (wasLastBorrower) {
+      try {
+        await FirebaseStorage.instance
+            .ref('covers/$googleBooksId.jpg')
+            .delete();
+      } catch (_) {
+        // If the file doesn't exist, ignore
+      }
     }
   }
-}
 
   // ─── Clubs ───────────────────────────────────────────────────────────────────
 
@@ -242,6 +284,10 @@ class StateModel extends ChangeNotifier {
         .collection('members')
         .doc(uid)
         .set(member.toMap());
+
+    await _db.collection('users').doc(uid).update({
+      'memberClubIds': FieldValue.arrayUnion([club.id]),
+    });
   }
 
   Future<void> sendJoinRequest(String inviteCode) async {
@@ -299,6 +345,11 @@ class StateModel extends ChangeNotifier {
 
       await _db.collection('clubs').doc(clubId).update({
         'memberUids': FieldValue.arrayUnion([requestUid]),
+      });
+
+      // Update the user's profile to include the new club
+      await _db.collection('users').doc(requestUid).update({
+        'memberClubIds': FieldValue.arrayUnion([clubId]),
       });
     }
 

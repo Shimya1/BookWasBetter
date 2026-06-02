@@ -1,9 +1,13 @@
 import 'package:app/models/appState.dart';
 import 'package:app/models/book_model.dart';
 import 'package:app/models/book_view_model.dart';
+import 'package:app/models/note_model.dart';
+import 'package:app/models/tag_model.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:app/screens/note/create_note_screen.dart';
+import 'package:app/widgets/note_card.dart';
 
 class BookDetailScreen extends StatefulWidget {
   final BookView book;
@@ -108,7 +112,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   void _showChapterDialog(BuildContext context) {
     final controller = TextEditingController(
-      text: widget.book.currentChapter > 0 ? widget.book.currentChapter.toString() : '',
+      text: widget.book.currentChapter > 0
+          ? widget.book.currentChapter.toString()
+          : '',
     );
 
     showDialog(
@@ -128,8 +134,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           autofocus: true,
           decoration: InputDecoration(
             hintText: 'Current chapter',
-            hintStyle:
-                const TextStyle(color: Color.fromARGB(130, 70, 40, 20)),
+            hintStyle: const TextStyle(color: Color.fromARGB(130, 70, 40, 20)),
             filled: true,
             fillColor: const Color.fromARGB(255, 240, 230, 200),
             border: OutlineInputBorder(
@@ -137,8 +142,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               borderSide: BorderSide.none,
             ),
           ),
-          style:
-              const TextStyle(color: Color.fromARGB(255, 70, 40, 20)),
+          style: const TextStyle(color: Color.fromARGB(255, 70, 40, 20)),
         ),
         actions: [
           TextButton(
@@ -187,8 +191,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         ),
         content: Text(
           'Remove "${widget.book.title}" from your log? This will also delete all notes for this book.',
-          style:
-              const TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
+          style: const TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
         ),
         actions: [
           TextButton(
@@ -207,7 +210,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              await context.read<StateModel>().deleteBook(widget.book.id, widget.book.googleBooksId);
+              await context
+                  .read<StateModel>()
+                  .deleteBook(widget.book.id, widget.book.googleBooksId);
               if (context.mounted) Navigator.of(context).pop();
             },
             child: const Text('Remove'),
@@ -223,9 +228,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   Widget build(BuildContext context) {
     // Listen for live updates to this specific book
     final liveBook = context.select<StateModel, BookView?>(
-      (state) =>
-          state.books.where((b) => b.id == widget.book.id).firstOrNull,
-    ) ?? widget.book;
+          (state) =>
+              state.books.where((b) => b.id == widget.book.id).firstOrNull,
+        ) ??
+        widget.book;
 
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 240, 228, 185),
@@ -236,8 +242,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             expandedHeight: 280,
             pinned: true,
             backgroundColor: const Color.fromARGB(255, 110, 60, 60),
-            iconTheme:
-                const IconThemeData(color: Colors.white),
+            iconTheme: const IconThemeData(color: Colors.white),
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
                 fit: StackFit.expand,
@@ -304,9 +309,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
                                   shadows: [
-                                    Shadow(
-                                        color: Colors.black54,
-                                        blurRadius: 4)
+                                    Shadow(color: Colors.black54, blurRadius: 4)
                                   ],
                                 ),
                                 maxLines: 3,
@@ -319,9 +322,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                                   fontSize: 14,
                                   color: Colors.white70,
                                   shadows: [
-                                    Shadow(
-                                        color: Colors.black54,
-                                        blurRadius: 4)
+                                    Shadow(color: Colors.black54, blurRadius: 4)
                                   ],
                                 ),
                               ),
@@ -350,33 +351,32 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     child: Row(
                       children: [
                         GestureDetector(
-                      onTap: () => _showStatusPicker(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: statusBg(liveBook.status),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              liveBook.status.displayName,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: statusFg(liveBook.status),
-                                fontSize: 14,
-                              ),
+                          onTap: () => _showStatusPicker(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: statusBg(liveBook.status),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            const SizedBox(width: 6),
-                            Icon(Icons.expand_more,
-                                size: 18,
-                                color: statusFg(liveBook.status)),
-                          ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  liveBook.status.displayName,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: statusFg(liveBook.status),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(Icons.expand_more,
+                                    size: 18, color: statusFg(liveBook.status)),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
                         const Spacer(),
                         IconButton(
                           onPressed: () => _showDeleteDialog(context),
@@ -413,8 +413,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           child: Row(
                             children: [
                               const Icon(Icons.bookmark,
-                                  color:
-                                      Color.fromARGB(255, 110, 60, 60),
+                                  color: Color.fromARGB(255, 110, 60, 60),
                                   size: 20),
                               const SizedBox(width: 10),
                               Text(
@@ -432,15 +431,13 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                                 'Update',
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: Color.fromARGB(
-                                      180, 110, 60, 60),
+                                  color: Color.fromARGB(180, 110, 60, 60),
                                 ),
                               ),
                               const SizedBox(width: 4),
                               const Icon(Icons.chevron_right,
                                   size: 18,
-                                  color: Color.fromARGB(
-                                      180, 110, 60, 60)),
+                                  color: Color.fromARGB(180, 110, 60, 60)),
                             ],
                           ),
                         ),
@@ -467,27 +464,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                   const SizedBox(height: 20),
 
                   // ── Notes placeholder ────────────────────────────────────
-                  _Section(
-                    title: 'Notes',
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color.fromARGB(100, 255, 250, 235),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color.fromARGB(60, 110, 60, 60),
-                          style: BorderStyle.solid,
-                        ),
-                      ),
-                      child: const Text(
-                        'Notes coming soon.',
-                        style: TextStyle(
-                          color: Color.fromARGB(150, 70, 40, 20),
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
+                  // ── Notes ────────────────────────────────────────────────────────
+                  _NotesSection(
+                    googleBooksId: liveBook.googleBooksId,
                   ),
 
                   const SizedBox(height: 40),
@@ -526,6 +505,308 @@ class _Section extends StatelessWidget {
         const SizedBox(height: 8),
         child,
       ],
+    );
+  }
+}
+
+// ─── Notes Section ────────────────────────────────────────────────────────────
+
+class _NotesSection extends StatefulWidget {
+  final String googleBooksId;
+  const _NotesSection({required this.googleBooksId});
+
+  @override
+  State<_NotesSection> createState() => _NotesSectionState();
+}
+
+class _NotesSectionState extends State<_NotesSection> {
+  Set<String> _activeTagFilters = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<StateModel>();
+    final userTags = state.profile?.tags ?? [];
+    final allNotes = state.notes
+        .where((n) => n.googleBooksId == widget.googleBooksId)
+        .toList();
+
+    // Filter by active tags — note must contain ALL selected tags
+    final filtered = _activeTagFilters.isEmpty
+        ? allNotes
+        : allNotes
+            .where(
+                (n) => _activeTagFilters.every((id) => n.tagIds.contains(id)))
+            .toList();
+
+    return _Section(
+      title: 'Notes',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Toolbar: New Note + Filter ─────────────────────────────
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CreateNoteScreen(
+                      googleBooksId: widget.googleBooksId,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('New Note'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 110, 60, 60),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  textStyle: const TextStyle(fontSize: 13),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const Spacer(),
+              if (userTags.isNotEmpty)
+                Stack(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.filter_list,
+                          color: Color.fromARGB(200, 110, 60, 60)),
+                      tooltip: 'Filter by tag',
+                      onPressed: () => _showTagFilter(context, userTags),
+                    ),
+                    if (_activeTagFilters.isNotEmpty)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color.fromARGB(255, 110, 60, 60),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── Active filter chips ────────────────────────────────────
+          if (_activeTagFilters.isNotEmpty) ...[
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _activeTagFilters.map((id) {
+                final tag = userTags.firstWhere((t) => t.id == id,
+                    orElse: () => Tag(id: id, name: '?', color: 0xFF888888));
+                final color = Color(tag.color);
+                return GestureDetector(
+                  onTap: () => setState(() => _activeTagFilters.remove(id)),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: color.withAlpha(50),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: color),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          tag.name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: color,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.close, size: 12, color: color),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Notes list ─────────────────────────────────────────────
+          if (filtered.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color.fromARGB(100, 255, 250, 235),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color.fromARGB(60, 110, 60, 60),
+                ),
+              ),
+              child: Text(
+                _activeTagFilters.isEmpty
+                    ? 'No notes yet. Tap "New Note" to add one.'
+                    : 'No notes match the selected filters.',
+                style: const TextStyle(
+                  color: Color.fromARGB(150, 70, 40, 20),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            )
+          else
+            ...filtered.map((note) => NoteCard(
+                  note: note,
+                  userTags: userTags,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CreateNoteScreen(
+                        googleBooksId: widget.googleBooksId,
+                        existingNote: note,
+                      ),
+                    ),
+                  ),
+                  onDelete: () => _confirmDelete(context, note),
+                )),
+        ],
+      ),
+    );
+  }
+
+  void _showTagFilter(BuildContext context, List<Tag> userTags) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color.fromARGB(255, 250, 243, 220),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text(
+                    'Filter by tag',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color.fromARGB(255, 70, 40, 20),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_activeTagFilters.isNotEmpty)
+                    TextButton(
+                      onPressed: () {
+                        setState(() => _activeTagFilters.clear());
+                        setSheetState(() {});
+                      },
+                      child: const Text(
+                        'Clear all',
+                        style:
+                            TextStyle(color: Color.fromARGB(200, 110, 60, 60)),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: userTags.map((tag) {
+                  final selected = _activeTagFilters.contains(tag.id);
+                  final color = Color(tag.color);
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        selected
+                            ? _activeTagFilters.remove(tag.id)
+                            : _activeTagFilters.add(tag.id);
+                      });
+                      setSheetState(() {});
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? color.withAlpha(80)
+                            : color.withAlpha(20),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: color,
+                          width: selected ? 2 : 1,
+                        ),
+                      ),
+                      child: Text(
+                        tag.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              selected ? FontWeight.bold : FontWeight.normal,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, Note note) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color.fromARGB(255, 250, 243, 220),
+        title: const Text(
+          'Delete note',
+          style: TextStyle(
+            color: Color.fromARGB(255, 70, 40, 20),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Delete "${note.title}"? This cannot be undone.',
+          style: const TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Color.fromARGB(180, 70, 40, 20)),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color.fromARGB(255, 170, 40, 40),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await context.read<StateModel>().deleteNote(note);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 }
