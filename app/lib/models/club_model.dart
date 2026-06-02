@@ -3,8 +3,6 @@ import 'dart:math';
 
 const _uuid = Uuid();
 
-enum ClubRole { founder, member }
-
 class Club {
   final String id;
   final String name;

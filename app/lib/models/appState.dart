@@ -1,7 +1,7 @@
 import 'dart:collection';
 import 'package:app/models/book_model.dart';
 import 'package:app/models/club_member_model.dart';
-import 'package:app/models/club_model.dart' hide ClubRole;
+import 'package:app/models/club_model.dart';
 import 'package:app/models/join_request_model.dart';
 import 'package:app/models/note_model.dart';
 import 'package:app/models/user_profile_model.dart';

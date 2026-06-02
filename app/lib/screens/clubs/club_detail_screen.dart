@@ -1,6 +1,6 @@
 import 'package:app/models/appState.dart';
 import 'package:app/models/club_member_model.dart';
-import 'package:app/models/club_model.dart' hide ClubRole;
+import 'package:app/models/club_model.dart';
 import 'package:app/models/join_request_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -243,57 +243,81 @@ class _JoinRequestTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: const Color.fromARGB(255, 200, 180, 150),
-            child: Text(
-              request.uid.substring(0, 2).toUpperCase(),
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color.fromARGB(255, 110, 60, 60),
-                fontWeight: FontWeight.bold,
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('users')
+          .doc(request.uid)
+          .get(),
+      builder: (context, snapshot) {
+        String displayName = 'Loading...';
+        String avatarUrl = '';
+
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          final name = data['displayName'] as String? ?? '';
+          displayName = name.isNotEmpty ? name : 'Unknown';
+          avatarUrl = data['avatarUrl'] as String? ?? '';
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: const Color.fromARGB(255, 200, 180, 150),
+                backgroundImage:
+                    avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                child: avatarUrl.isEmpty
+                    ? Text(
+                        displayName.isNotEmpty && displayName != 'Loading...'
+                            ? displayName[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color.fromARGB(255, 110, 60, 60),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : null,
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              request.uid,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color.fromARGB(200, 70, 40, 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  displayName,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color.fromARGB(200, 70, 40, 20),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
+              // Decline
+              IconButton(
+                icon: const Icon(Icons.close,
+                    color: Color.fromARGB(200, 170, 40, 40), size: 20),
+                tooltip: 'Decline',
+                onPressed: () => context.read<StateModel>().respondToJoinRequest(
+                      clubId: club.id,
+                      requestUid: request.uid,
+                      accept: false,
+                    ),
+              ),
+              // Accept
+              IconButton(
+                icon: const Icon(Icons.check,
+                    color: Color.fromARGB(200, 40, 120, 40), size: 20),
+                tooltip: 'Accept',
+                onPressed: () => context.read<StateModel>().respondToJoinRequest(
+                      clubId: club.id,
+                      requestUid: request.uid,
+                      accept: true,
+                    ),
+              ),
+            ],
           ),
-          // Decline
-          IconButton(
-            icon: const Icon(Icons.close,
-                color: Color.fromARGB(200, 170, 40, 40), size: 20),
-            tooltip: 'Decline',
-            onPressed: () => context.read<StateModel>().respondToJoinRequest(
-                  clubId: club.id,
-                  requestUid: request.uid,
-                  accept: false,
-                ),
-          ),
-          // Accept
-          IconButton(
-            icon: const Icon(Icons.check,
-                color: Color.fromARGB(200, 40, 120, 40), size: 20),
-            tooltip: 'Accept',
-            onPressed: () => context.read<StateModel>().respondToJoinRequest(
-                  clubId: club.id,
-                  requestUid: request.uid,
-                  accept: true,
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
