@@ -96,6 +96,23 @@ class _BookCardState extends State<BookCard> {
                     ),
                     const SizedBox(height: 8),
 
+                    // Genre
+                    if (widget.book.categories.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.book.categories.first,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color.fromARGB(150, 110, 60, 60),
+                          fontStyle: FontStyle.italic,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 8),
+
                     // Status badge
                     _StatusBadge(status: widget.book.status),
 

@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'package:app/models/activity_model.dart';
 import 'package:app/models/book_model.dart';
 import 'package:app/models/book_view_model.dart';
 import 'package:app/models/club_member_model.dart';
@@ -87,11 +88,29 @@ class StateModel extends ChangeNotifier {
 
   Future<void> deleteTag(String tagId) async {
     final uid = _auth.currentUser!.uid;
+
+    // 1. Remove tag from profile
     final updatedTags =
         _profile?.tags.where((t) => t.id != tagId).toList() ?? [];
     await _db.collection('users').doc(uid).update({
       'tags': updatedTags.map((t) => t.toMap()).toList(),
     });
+
+    // 2. Remove tagId from all notes that contain it
+    final notesSnapshot = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('notes')
+        .where('tagIds', arrayContains: tagId)
+        .get();
+
+    final batch = _db.batch();
+    for (final doc in notesSnapshot.docs) {
+      batch.update(doc.reference, {
+        'tagIds': FieldValue.arrayRemove([tagId]),
+      });
+    }
+    await batch.commit();
   }
 
   Future<void> addNote(Note note) async {
@@ -153,6 +172,17 @@ class StateModel extends ChangeNotifier {
     });
   }
 
+  // user book rating
+  Future<void> updateBookRating(String bookId, double rating) async {
+    final uid = _auth.currentUser!.uid;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('books')
+        .doc(bookId)
+        .update({'rating': rating});
+  }
+
   Future<void> addBook(BookSearchResult result, BookStatus status) async {
     final uid = _auth.currentUser!.uid;
     final book = Book(
@@ -174,6 +204,7 @@ class StateModel extends ChangeNotifier {
         'author': result.author,
         'coverUrl': result.coverUrl,
         'description': result.description,
+        'categories': result.categories,
         'numUsersBorrowing': FieldValue.increment(1),
       },
       SetOptions(merge: true),
@@ -268,7 +299,7 @@ class StateModel extends ChangeNotifier {
 
   Future<void> createClub(String name) async {
     final uid = _auth.currentUser!.uid;
-    final club = Club(name: name, founderUid: uid);
+    final club = Club(name: name, ownerUid: uid);
 
     // Create the club document
     await _db.collection('clubs').doc(club.id).set({
@@ -276,8 +307,8 @@ class StateModel extends ChangeNotifier {
       'memberUids': [uid], // array for easy querying
     });
 
-    // Add founder to members subcollection
-    final member = ClubMember(uid: uid, role: ClubRole.founder);
+    // Add owner to members subcollection
+    final member = ClubMember(uid: uid, role: ClubRole.owner);
     await _db
         .collection('clubs')
         .doc(club.id)
@@ -288,8 +319,46 @@ class StateModel extends ChangeNotifier {
     await _db.collection('users').doc(uid).update({
       'memberClubIds': FieldValue.arrayUnion([club.id]),
     });
+
+    try {
+      await _writeActivity(
+        clubId: club.id,
+        entry: ActivityEntry(
+          type: ActivityType.clubCreated,
+          actorUid: uid,
+          actorName: uid == _profile?.uid && _profile!.displayName.isNotEmpty
+              ? _profile!.displayName
+              : 'A member',
+        ),
+      );
+    } catch (e) {
+      debugPrint('Activity write failed: $e');
+    }
   }
 
+
+Future<void> deleteClub(String clubId) async {
+  final uid = _auth.currentUser!.uid;
+
+  // Fetch all subcollection docs to delete
+  final members = await _db.collection('clubs').doc(clubId).collection('members').get();
+  final activity = await _db.collection('clubs').doc(clubId).collection('activity').get();
+  final joinRequests = await _db.collection('clubs').doc(clubId).collection('joinRequests').get();
+
+  final batch = _db.batch();
+
+  for (final doc in members.docs) batch.delete(doc.reference);
+  for (final doc in activity.docs) batch.delete(doc.reference);
+  for (final doc in joinRequests.docs) batch.delete(doc.reference);
+
+  batch.delete(_db.collection('clubs').doc(clubId));
+
+  await batch.commit();
+
+  await _db.collection('users').doc(uid).update({
+    'memberClubIds': FieldValue.arrayRemove([clubId]),
+  });
+}
   Future<void> sendJoinRequest(String inviteCode) async {
     final uid = _auth.currentUser!.uid;
 
@@ -351,8 +420,26 @@ class StateModel extends ChangeNotifier {
       await _db.collection('users').doc(requestUid).update({
         'memberClubIds': FieldValue.arrayUnion([clubId]),
       });
-    }
+      // Fetch the joiner's display name
+      final userDoc = await _db.collection('users').doc(requestUid).get();
+      final actorName =
+          (userDoc.data()?['displayName'] as String? ?? '').isNotEmpty
+              ? userDoc.data()!['displayName'] as String
+              : 'A new member';
 
+      try {
+        await _writeActivity(
+          clubId: clubId,
+          entry: ActivityEntry(
+            type: ActivityType.memberJoined,
+            actorUid: requestUid,
+            actorName: actorName,
+          ),
+        );
+      } catch (e) {
+        debugPrint('Activity write failed: $e');
+      }
+    }
     // Update request status either way
     await _db
         .collection('clubs')
@@ -362,6 +449,112 @@ class StateModel extends ChangeNotifier {
         .update({'status': accept ? 'accepted' : 'declined'});
   }
 
+  Future<void> _writeActivity({
+    required String clubId,
+    required ActivityEntry entry,
+  }) async {
+    await _db
+        .collection('clubs')
+        .doc(clubId)
+        .collection('activity')
+        .doc(entry.id)
+        .set(entry.toMap());
+  }
+
+  Future<void> transferOwnership({
+    required String clubId,
+    required String newOwnerUid,
+  }) async {
+    final uid = _auth.currentUser!.uid;
+
+    // Fetch new owner's display name for the activity entry
+    final newOwnerDoc = await _db.collection('users').doc(newOwnerUid).get();
+    final newOwnerName =
+        (newOwnerDoc.data()?['displayName'] as String? ?? '').isNotEmpty
+            ? newOwnerDoc.data()!['displayName'] as String
+            : 'A member';
+
+    final batch = _db.batch();
+
+    // Update club doc
+    batch.update(_db.collection('clubs').doc(clubId), {
+      'ownerUid': newOwnerUid,
+    });
+
+    // Demote old owner to member
+    batch.update(
+      _db.collection('clubs').doc(clubId).collection('members').doc(uid),
+      {'role': ClubRole.member.name},
+    );
+
+    // Promote new owner
+    batch.update(
+      _db
+          .collection('clubs')
+          .doc(clubId)
+          .collection('members')
+          .doc(newOwnerUid),
+      {'role': ClubRole.owner.name},
+    );
+
+    await batch.commit();
+
+    try {
+      await _writeActivity(
+        clubId: clubId,
+        entry: ActivityEntry(
+          type: ActivityType.ownershipTransferred,
+          actorUid: uid,
+          actorName: _profile?.displayName ?? 'A member',
+          targetName: newOwnerName,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Activity write failed: $e');
+    }
+  }
+
+  Future<void> leaveClub(String clubId) async {
+    final uid = _auth.currentUser!.uid;
+
+    await _db.collection('clubs').doc(clubId).update({
+      'memberUids': FieldValue.arrayRemove([uid]),
+    });
+
+    await _db
+        .collection('clubs')
+        .doc(clubId)
+        .collection('members')
+        .doc(uid)
+        .delete();
+
+    await _db.collection('users').doc(uid).update({
+      'memberClubIds': FieldValue.arrayRemove([clubId]),
+    });
+
+    // Delete old join request so they can rejoin later
+    try {
+      await _db
+          .collection('clubs')
+          .doc(clubId)
+          .collection('joinRequests')
+          .doc(uid)
+          .delete();
+    } catch (_) {}
+
+    try {
+      await _writeActivity(
+        clubId: clubId,
+        entry: ActivityEntry(
+          type: ActivityType.memberLeft,
+          actorUid: uid,
+          actorName: _profile?.displayName ?? 'A member',
+        ),
+      );
+    } catch (e) {
+      debugPrint('Activity write failed: $e');
+    }
+  }
 // ─── Profile ─────────────────────────────────────────────────────────────────
 
   void _listenToProfile(String uid) {

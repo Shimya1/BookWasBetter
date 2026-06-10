@@ -7,15 +7,17 @@ const _uuid = Uuid();
 class Club {
   final String id;
   final String name;
-  final String founderUid;
+  final String ownerUid;
   final String inviteCode;
   final DateTime createdAt;
+  final List<String> memberUids;
   final List<Tag> tags = [];
 
   Club({
     String? id,
     required this.name,
-    required this.founderUid,
+    required this.ownerUid,
+    this.memberUids = const [],
     String? inviteCode,
     DateTime? createdAt,
   })  : id = id ?? _uuid.v4(),
@@ -31,9 +33,10 @@ class Club {
   Map<String, dynamic> toMap() {
     return {
       'name': name,
-      'founderUid': founderUid,
+      'ownerUid': ownerUid,
       'inviteCode': inviteCode,
       'createdAt': createdAt.toIso8601String(),
+      'memberUids': memberUids,
     };
   }
 
@@ -41,8 +44,9 @@ class Club {
     return Club(
       id: id,
       name: map['name'] as String,
-      founderUid: map['founderUid'] as String,
+      ownerUid: map['ownerUid'] as String,
       inviteCode: map['inviteCode'] as String,
+      memberUids: List<String>.from(map['memberUids'] ?? []),
       createdAt: DateTime.parse(map['createdAt'] as String),
     );
   }

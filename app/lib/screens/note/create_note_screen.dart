@@ -225,8 +225,9 @@ class _CreateNoteScreenState extends State<CreateNoteScreen> {
               context,
               MaterialPageRoute(
                 builder: (_) => const CreateTagScreen(),
-              ),
+              ), 
             ),
+            onDeleteTag: (tag) => _confirmDeleteTag(context, tag),
           ),
           const SizedBox(height: 20),
 
@@ -326,12 +327,14 @@ class _TagSelector extends StatelessWidget {
   final List<String> selectedTagIds;
   final void Function(String id) onToggle;
   final VoidCallback onCreateTag;
+  final void Function(Tag tag) onDeleteTag;
 
   const _TagSelector({
     required this.userTags,
     required this.selectedTagIds,
     required this.onToggle,
     required this.onCreateTag,
+    required this.onDeleteTag,
   });
 
   @override
@@ -345,6 +348,7 @@ class _TagSelector extends StatelessWidget {
           final color = Color(tag.color);
           return GestureDetector(
             onTap: () => onToggle(tag.id),
+            onLongPress: () => onDeleteTag(tag),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
@@ -505,4 +509,47 @@ class _VisibilitySection extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Delete tag confirmation ───────────────────────────────────────────────
+void _confirmDeleteTag(BuildContext context, Tag tag) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: const Color.fromARGB(255, 250, 243, 220),
+      title: const Text(
+        'Delete tag',
+        style: TextStyle(
+          color: Color.fromARGB(255, 70, 40, 20),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      content: Text(
+        'Delete "${tag.name}"? This will also remove it from any existing notes.',
+        style: const TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: Color.fromARGB(180, 70, 40, 20)),
+          ),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color.fromARGB(255, 170, 40, 40),
+            foregroundColor: Colors.white,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onPressed: () async {
+            Navigator.pop(ctx);
+            await context.read<StateModel>().deleteTag(tag.id);
+          },
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
 }

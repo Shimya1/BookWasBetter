@@ -23,7 +23,8 @@ class BookView {
   String get author => libraryBook.author;
   String get coverUrl => libraryBook.coverUrl;
   String get description => libraryBook.description;
-
+  List<String> get categories => libraryBook.categories;
+  
   // copyWith proxies to Book, keeps libraryBook intact
   BookView copyWith({
     BookStatus? status,

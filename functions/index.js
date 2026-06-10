@@ -61,12 +61,12 @@ exports.searchBooks = onRequest(
             googleBooksId: item.id,
             title: info.title ?? 'Unknown Title',
             author: authors.length > 0 ? authors.join(', ') : 'Unknown Author',
-            // Return a placeholder flag — cover will be fetched when book is added
             hasCover,
             coverUrl: hasCover
               ? `https://books.google.com/books/publisher/content/images/frontcover/${item.id}?fife=w300-h450&source=gbs_api`
               : '',
             description: info.description ?? 'No description available.',
+            categories: info.categories ?? [],
           };
         })
         .filter((result) => result.hasCover);

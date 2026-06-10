@@ -1,4 +1,4 @@
-enum ClubRole { founder, member }
+enum ClubRole { owner, member }
 
 class ClubMember {
   final String uid;
@@ -14,7 +14,7 @@ class ClubMember {
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
-      'role': role == ClubRole.founder ? 'founder' : 'member',
+      'role': role == ClubRole.owner ? 'owner' : 'member',
       'joinedAt': joinedAt.toIso8601String(),
     };
   }
@@ -22,7 +22,7 @@ class ClubMember {
   factory ClubMember.fromMap(Map<String, dynamic> map) {
     return ClubMember(
       uid: map['uid'] as String,
-      role: map['role'] == 'founder' ? ClubRole.founder : ClubRole.member,
+      role: map['role'] == 'owner' ? ClubRole.owner : ClubRole.member,
       joinedAt: DateTime.parse(map['joinedAt'] as String),
     );
   }

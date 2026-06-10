@@ -5,6 +5,7 @@ class LibraryBook {
   final String coverUrl;
   final String description;
   final int numUsersBorrowing;
+  final List<String> categories;
 
   LibraryBook({
     required this.googleBooksId,
@@ -12,6 +13,7 @@ class LibraryBook {
     required this.author,
     required this.coverUrl,
     required this.description,
+    required this.categories,
     this.numUsersBorrowing = 1,
   });
 
@@ -23,6 +25,7 @@ class LibraryBook {
       'coverUrl': coverUrl,
       'description': description,
       'numUsersBorrowing': numUsersBorrowing,
+      'categories': categories,
     };
   }
 
@@ -33,6 +36,7 @@ class LibraryBook {
       author: map['author'] as String? ?? '',
       coverUrl: map['coverUrl'] as String? ?? '',
       description: map['description'] as String? ?? '',
+      categories: List<String>.from(map['categories'] as List<dynamic>),
       numUsersBorrowing: (map['numUsersBorrowing'] as num?)?.toInt() ?? 1,
     );
   }

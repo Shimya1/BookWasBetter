@@ -12,6 +12,7 @@ class BookSearchResult {
   final String author;
   final String coverUrl;
   final String description;
+  final List<String> categories;
 
   BookSearchResult({
     required this.googleBooksId,
@@ -19,6 +20,7 @@ class BookSearchResult {
     required this.author,
     required this.coverUrl,
     required this.description,
+    this.categories = const [],
   });
 
   factory BookSearchResult.fromMap(Map<String, dynamic> map) {
@@ -28,6 +30,7 @@ class BookSearchResult {
       author: map['author'] as String,
       coverUrl: map['coverUrl'] as String,
       description: map['description'] as String,
+      categories: List<String>.from(map['categories'] ?? []),
     );
   }
 }

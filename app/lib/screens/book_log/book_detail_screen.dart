@@ -390,6 +390,19 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
                   const SizedBox(height: 20),
 
+// ── Rating ───────────────────────────────────────────────────────
+                  _Section(
+                    title: 'My Rating',
+                    child: _StarRating(
+                      rating: liveBook.rating ?? 0,
+                      onRatingChanged: (value) => context
+                          .read<StateModel>()
+                          .updateBookRating(liveBook.id, value),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
                   // ── Chapter progress (currently reading only) ────────────
                   if (liveBook.status == BookStatus.currentlyReading) ...[
                     _Section(
@@ -462,6 +475,41 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                   ),
 
                   const SizedBox(height: 20),
+
+                  // ── Genre list ─────────────────────────────────────────────
+                  if (liveBook.categories.isNotEmpty) ...[
+                    _Section(
+                      title: 'Genres',
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: liveBook.categories
+                            .map((genre) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        const Color.fromARGB(40, 110, 60, 60),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: const Color.fromARGB(
+                                          100, 110, 60, 60),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    genre,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color.fromARGB(200, 70, 40, 20),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // ── Notes placeholder ────────────────────────────────────
                   // ── Notes ────────────────────────────────────────────────────────
@@ -806,6 +854,82 @@ class _NotesSectionState extends State<_NotesSection> {
             child: const Text('Delete'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+class _StarRating extends StatelessWidget {
+  final double rating;
+  final void Function(double) onRatingChanged;
+
+  const _StarRating({
+    required this.rating,
+    required this.onRatingChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        ...List.generate(5, (index) {
+          return _Star(
+            index: index,
+            rating: rating,
+            onRatingChanged: onRatingChanged,
+          );
+        }),
+        const SizedBox(width: 8),
+        Text(
+          rating > 0 ? rating.toStringAsFixed(1) : '—',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Color.fromARGB(200, 110, 60, 60),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Star extends StatelessWidget {
+  final int index;
+  final double rating;
+  final void Function(double) onRatingChanged;
+
+  const _Star({
+    required this.index,
+    required this.rating,
+    required this.onRatingChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const filled = Color.fromARGB(255, 110, 60, 60);
+    const empty = Color.fromARGB(60, 110, 60, 60);
+
+    IconData icon;
+    if (rating >= index + 1) {
+      icon = Icons.star;
+    } else if (rating >= index + 0.5) {
+      icon = Icons.star_half;
+    } else {
+      icon = Icons.star_border;
+    }
+
+    return GestureDetector(
+      onTapDown: (details) {
+        final box = context.findRenderObject() as RenderBox;
+        final localPos = box.globalToLocal(details.globalPosition);
+        final isHalf = localPos.dx < box.size.width / 2;
+        final newRating = isHalf ? index + 0.5 : index + 1.0;
+        onRatingChanged(newRating);
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: Icon(icon, color: rating > index * 1.0 || rating >= index + 0.5 ? filled : empty, size: 32),
       ),
     );
   }

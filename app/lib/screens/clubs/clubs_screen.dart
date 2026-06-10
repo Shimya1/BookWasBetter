@@ -137,7 +137,7 @@ class _ClubList extends StatelessWidget {
       itemCount: clubs.length,
       itemBuilder: (context, index) {
         final club = clubs[index];
-        final isFounder = club.founderUid == FirebaseAuth.instance.currentUser?.uid;
+        final isOwner = club.ownerUid == FirebaseAuth.instance.currentUser?.uid;
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
@@ -170,8 +170,8 @@ class _ClubList extends StatelessWidget {
               ),
             ),
             subtitle: Text(
-              club.founderUid == FirebaseAuth.instance.currentUser?.uid
-                  ? 'Founder'
+              club.ownerUid == FirebaseAuth.instance.currentUser?.uid
+                  ? 'Owner'
                   : 'Member',
               style: const TextStyle(
                 fontSize: 12,

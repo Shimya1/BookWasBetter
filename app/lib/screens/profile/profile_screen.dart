@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:app/models/tag_model.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -31,13 +32,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _uploadingAvatar = true);
 
     try {
-  final uid = FirebaseAuth.instance.currentUser!.uid;
-  final ref = FirebaseStorage.instance.ref('avatars/$uid.jpg');
-  final bytes = await picked.readAsBytes();
-  await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-  final url = await ref.getDownloadURL();
-  if (mounted) await context.read<StateModel>().updateAvatarUrl(url);
-
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final ref = FirebaseStorage.instance.ref('avatars/$uid.jpg');
+      final bytes = await picked.readAsBytes();
+      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      final url = await ref.getDownloadURL();
+      if (mounted) await context.read<StateModel>().updateAvatarUrl(url);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -288,7 +288,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
 
+// ── Tags ─────────────────────────────────────────────────────────
+                if (profile.tags.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(220, 255, 250, 235),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.brown.withAlpha(30),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'MY TAGS  (long press to delete)',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.1,
+                            color: Color.fromARGB(140, 70, 40, 20),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: profile.tags.map((tag) {
+                            final color = Color(tag.color);
+                            return GestureDetector(
+                              onLongPress: () =>
+                                  _confirmDeleteTag(context, tag),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: color.withAlpha(50),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: color),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      tag.name,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 32),
 
                 // ── Sign out ─────────────────────────────────────────────
@@ -298,8 +364,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: Color.fromARGB(200, 130, 40, 40)),
                   label: const Text(
                     'Sign out',
-                    style: TextStyle(
-                        color: Color.fromARGB(200, 130, 40, 40)),
+                    style: TextStyle(color: Color.fromARGB(200, 130, 40, 40)),
                   ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(
@@ -432,4 +497,47 @@ class _StatCard extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Delete tag confirmation ───────────────────────────────────────────────
+void _confirmDeleteTag(BuildContext context, Tag tag) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: const Color.fromARGB(255, 250, 243, 220),
+      title: const Text(
+        'Delete tag',
+        style: TextStyle(
+          color: Color.fromARGB(255, 70, 40, 20),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      content: Text(
+        'Delete "${tag.name}"? This will also remove it from any existing notes.',
+        style: const TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: Color.fromARGB(180, 70, 40, 20)),
+          ),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color.fromARGB(255, 170, 40, 40),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8)),
+          ),
+          onPressed: () async {
+            Navigator.pop(ctx);
+            await context.read<StateModel>().deleteTag(tag.id);
+          },
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
 }
