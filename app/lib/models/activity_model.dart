@@ -1,6 +1,6 @@
 import 'package:uuid/uuid.dart';
 
-enum ActivityType { memberJoined, memberLeft, bookSelected, clubCreated, ownershipTransferred }
+enum ActivityType { memberJoined, memberLeft, bookSelected, clubCreated, ownershipTransferred, eventCreated, eventDeleted }
 
 class ActivityEntry {
   final String id;
@@ -23,6 +23,8 @@ class ActivityEntry {
   String get description => switch (type) {
         ActivityType.clubCreated => '$actorName created the club',
         ActivityType.memberJoined => '$actorName joined the club',
+        ActivityType.eventCreated => '$actorName created a new event: ${targetName ?? 'an event'}',
+        ActivityType.eventDeleted => '$actorName deleted an event: ${targetName ?? 'an event'}',
         ActivityType.memberLeft => '$actorName left the club',
         ActivityType.bookSelected => '$actorName selected a new book',
         ActivityType.ownershipTransferred => '$actorName transferred ownership to ${targetName ?? 'a member'}',

@@ -4,13 +4,17 @@ import 'package:app/models/activity_model.dart';
 import 'package:app/models/appState.dart';
 import 'package:app/models/club_member_model.dart';
 import 'package:app/models/club_model.dart';
+import 'package:app/models/event_model.dart';
 import 'package:app/models/join_request_model.dart';
+import 'package:app/widgets/event_card.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-
+import 'package:app/models/event_model.dart';
+import 'package:app/screens/clubs/create_event_screen.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 class ClubDetailScreen extends StatefulWidget {
   final Club club;
@@ -20,12 +24,11 @@ class ClubDetailScreen extends StatefulWidget {
   State<ClubDetailScreen> createState() => _ClubDetailScreenState();
 }
 
-
-
-
 class _ClubDetailScreenState extends State<ClubDetailScreen> {
   late Club _club;
   StreamSubscription? _clubSub;
+  StreamSubscription? _activitySub;
+  StreamSubscription? _eventsSub;
 
   @override
   void initState() {
@@ -42,16 +45,56 @@ class _ClubDetailScreenState extends State<ClubDetailScreen> {
         });
       }
     });
+
+    _activitySub = FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.club.id)
+        .collection('activity')
+        .orderBy('createdAt', descending: true)
+        .limit(20)
+        .snapshots()
+        .listen((snapshot) {
+      final entries = snapshot.docs
+          .map((doc) => ActivityEntry.fromMap(doc.id, doc.data()))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _club = _club.copyWith(activities: entries);
+        });
+      }
+    });
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    _eventsSub = FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.club.id)
+        .collection('events')
+        .where('dateTime', isGreaterThanOrEqualTo: today.toIso8601String())
+        .orderBy('dateTime')
+        .snapshots()
+        .listen((snapshot) {
+      final events = snapshot.docs
+          .map((doc) => ClubEvent.fromMap(doc.id, doc.data()))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _club = _club.copyWith(events: events);
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _clubSub?.cancel();
+    _activitySub?.cancel();
+    _eventsSub?.cancel();
     super.dispose();
   }
 
-  bool get _isOwner =>
-      FirebaseAuth.instance.currentUser?.uid == _club.ownerUid;
+  bool get _isOwner => FirebaseAuth.instance.currentUser?.uid == _club.ownerUid;
 
   @override
   Widget build(BuildContext context) {
@@ -63,25 +106,25 @@ class _ClubDetailScreenState extends State<ClubDetailScreen> {
           backgroundColor: const Color.fromARGB(255, 110, 60, 60),
           iconTheme: const IconThemeData(color: Colors.white),
           actions: [
-  if (_isOwner && _club.memberUids.length == 1)
-    IconButton(
-      icon: const Icon(Icons.delete_forever, color: Colors.white),
-      tooltip: 'Delete club',
-      onPressed: () => _confirmDelete(context),
-    ),
-  if (_isOwner && _club.memberUids.length > 1)
-    IconButton(
-      icon: const Icon(Icons.swap_horiz, color: Colors.white),
-      tooltip: 'Transfer ownership',
-      onPressed: () => _confirmTransfer(context),
-    ),
-  if (!_isOwner)
-    IconButton(
-      icon: const Icon(Icons.exit_to_app, color: Colors.white),
-      tooltip: 'Leave club',
-      onPressed: () => _confirmLeave(context),
-    ),
-],
+            if (_isOwner && _club.memberUids.length == 1)
+              IconButton(
+                icon: const Icon(Icons.delete_forever, color: Colors.white),
+                tooltip: 'Delete club',
+                onPressed: () => _confirmDelete(context),
+              ),
+            if (_isOwner && _club.memberUids.length > 1)
+              IconButton(
+                icon: const Icon(Icons.swap_horiz, color: Colors.white),
+                tooltip: 'Transfer ownership',
+                onPressed: () => _confirmTransfer(context),
+              ),
+            if (!_isOwner)
+              IconButton(
+                icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                tooltip: 'Leave club',
+                onPressed: () => _confirmLeave(context),
+              ),
+          ],
           title: Text(
             _club.name,
             style: const TextStyle(
@@ -95,16 +138,16 @@ class _ClubDetailScreenState extends State<ClubDetailScreen> {
             indicatorColor: Colors.white,
             tabs: [
               Tab(text: 'Overview'),
-              Tab(text: 'Members'),
               Tab(text: 'Events'),
+              Tab(text: 'Members'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
             _OverviewTab(club: _club, isOwner: _isOwner),
+            _EventsTab(club: _club),
             _MembersTab(club: _club, isOwner: _isOwner),
-            _EventsTab(club: _club, isOwner: _isOwner),
           ],
         ),
       ),
@@ -273,52 +316,50 @@ class _ClubDetailScreenState extends State<ClubDetailScreen> {
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: const Color.fromARGB(255, 255, 250, 235),
-      title: const Text(
-        'Delete Club?',
-        style: TextStyle(
-          color: Color.fromARGB(255, 170, 40, 40),
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      content: const Text(
-        'This will permanently delete the club and all of its history, members, and activity. This cannot be undone.',
-        style: TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text(
-            'Cancel',
-            style: TextStyle(color: Color.fromARGB(200, 110, 60, 60)),
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color.fromARGB(255, 255, 250, 235),
+        title: const Text(
+          'Delete Club?',
+          style: TextStyle(
+            color: Color.fromARGB(255, 170, 40, 40),
+            fontWeight: FontWeight.bold,
           ),
         ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text(
-            'Delete Forever',
-            style: TextStyle(
-              color: Color.fromARGB(255, 170, 40, 40),
-              fontWeight: FontWeight.bold,
+        content: const Text(
+          'This will permanently delete the club and all of its history, members, and activity. This cannot be undone.',
+          style: TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Color.fromARGB(200, 110, 60, 60)),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Delete Forever',
+              style: TextStyle(
+                color: Color.fromARGB(255, 170, 40, 40),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
 
-  if (confirmed == true && context.mounted) {
-    await context.read<StateModel>().deleteClub(_club.id);
-    if (context.mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+    if (confirmed == true && context.mounted) {
+      await context.read<StateModel>().deleteClub(_club.id);
+      if (context.mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     }
   }
-}
-
-
 }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
@@ -351,7 +392,7 @@ class _OverviewTab extends StatelessWidget {
         ),
         const SizedBox(height: 16),
 
-        _RecentActivityCard(club: club),
+        _RecentActivityCard(activities: club.activities),
       ],
     );
   }
@@ -586,95 +627,74 @@ class _JoinRequestTile extends StatelessWidget {
 
 // ─── Recent Activity Card ─────────────────────────────────────────────────
 class _RecentActivityCard extends StatelessWidget {
-  final Club club;
-  const _RecentActivityCard({required this.club});
+  final List<ActivityEntry> activities;
+  const _RecentActivityCard({required this.activities});
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('clubs')
-          .doc(club.id)
-          .collection('activity')
-          .orderBy('createdAt', descending: true)
-          .limit(5) // just the last 5 for the overview
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const SizedBox.shrink();
-        }
+    if (activities.isEmpty) return const SizedBox.shrink();
 
-        final entries = snapshot.data!.docs
-            .map((doc) => ActivityEntry.fromMap(
-                  doc.id,
-                  doc.data() as Map<String, dynamic>,
-                ))
-            .toList();
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color.fromARGB(220, 255, 250, 235),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.brown.withAlpha(40),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color.fromARGB(220, 255, 250, 235),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.brown.withAlpha(40),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.dynamic_feed_outlined,
-                      size: 18, color: Color.fromARGB(200, 110, 60, 60)),
-                  SizedBox(width: 8),
-                  Text(
-                    'RECENT ACTIVITY',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                      color: Color.fromARGB(160, 70, 40, 20),
-                    ),
-                  ),
-                ],
+              Icon(Icons.dynamic_feed_outlined,
+                  size: 18, color: Color.fromARGB(200, 110, 60, 60)),
+              SizedBox(width: 8),
+              Text(
+                'RECENT ACTIVITY',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: Color.fromARGB(160, 70, 40, 20),
+                ),
               ),
-              const SizedBox(height: 12),
-              // Column instead of ListView — no scroll conflict
-              ...entries.map((entry) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.history,
-                            size: 14, color: Color.fromARGB(150, 110, 60, 60)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            entry.description,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color.fromARGB(200, 70, 40, 20),
-                            ),
-                          ),
-                        ),
-                        Text(
-                          _formatDate(entry.createdAt),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color.fromARGB(130, 70, 40, 20),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 12),
+          ...activities.map((entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.history,
+                        size: 14, color: Color.fromARGB(150, 110, 60, 60)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        entry.description,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color.fromARGB(200, 70, 40, 20),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      _formatDate(entry.createdAt),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color.fromARGB(130, 70, 40, 20),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
     );
   }
 
@@ -878,14 +898,164 @@ class _PlaceholderCard extends StatelessWidget {
   }
 }
 
-class _EventsTab extends StatelessWidget {
+// ─── Events Tab ──────────────────────────────────────────────────────────────
+class _EventsTab extends StatefulWidget {
   final Club club;
-  final bool isOwner;
-  const _EventsTab({required this.club, required this.isOwner});
+  const _EventsTab({required this.club});
+
+  @override
+  State<_EventsTab> createState() => _EventsTabState();
+}
+
+class _EventsTabState extends State<_EventsTab> {
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _selectedDay;
+
+  List<ClubEvent> _eventsForDay(DateTime day) {
+    return widget.club.events
+        .where((e) =>
+            e.dateTime.year == day.year &&
+            e.dateTime.month == day.month &&
+            e.dateTime.day == day.day)
+        .toList();
+  }
 
   @override
   Widget build(BuildContext context) {
-    // TODO: implement build
-    throw UnimplementedError();
+    final selectedEvents = _selectedDay == null
+        ? _eventsForDay(DateTime.now())
+        : _eventsForDay(_selectedDay!);
+
+    return Column(
+      children: [
+        TableCalendar(
+          firstDay: DateTime.now().subtract(const Duration(days: 1)),
+          lastDay: DateTime.now().add(const Duration(days: 365 * 2)),
+          focusedDay: _focusedDay,
+          selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+          eventLoader: _eventsForDay,
+          onDaySelected: (selected, focused) {
+            setState(() {
+              _selectedDay = selected;
+              _focusedDay = focused;
+            });
+          },
+          calendarStyle: const CalendarStyle(
+            todayDecoration: BoxDecoration(
+              color: Color.fromARGB(150, 110, 60, 60),
+              shape: BoxShape.circle,
+            ),
+            selectedDecoration: BoxDecoration(
+              color: Color.fromARGB(255, 110, 60, 60),
+              shape: BoxShape.circle,
+            ),
+            weekendTextStyle:
+                TextStyle(color: Color.fromARGB(200, 110, 60, 60)),
+            defaultTextStyle: TextStyle(color: Color.fromARGB(255, 70, 40, 20)),
+            outsideTextStyle: TextStyle(color: Color.fromARGB(80, 70, 40, 20)),
+          ),
+          headerStyle: const HeaderStyle(
+            formatButtonVisible: false,
+            titleCentered: true,
+            titleTextStyle: TextStyle(
+              color: Color.fromARGB(255, 70, 40, 20),
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+            leftChevronIcon: Icon(
+              Icons.chevron_left,
+              color: Color.fromARGB(200, 110, 60, 60),
+            ),
+            rightChevronIcon: Icon(
+              Icons.chevron_right,
+              color: Color.fromARGB(200, 110, 60, 60),
+            ),
+          ),
+          daysOfWeekStyle: const DaysOfWeekStyle(
+            weekdayStyle:
+                TextStyle(color: Color.fromARGB(180, 70, 40, 20), fontSize: 12),
+            weekendStyle: TextStyle(
+                color: Color.fromARGB(180, 110, 60, 60), fontSize: 12),
+          ),
+          calendarFormat: CalendarFormat.month,
+          calendarBuilders: CalendarBuilders(
+            markerBuilder: (context, day, events) {
+              if (events.isEmpty) return const SizedBox.shrink();
+              final uid = FirebaseAuth.instance.currentUser!.uid;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: events.map((e) {
+                  final event = e as ClubEvent;
+                  return Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                    decoration: BoxDecoration(
+                      color: event.isAttending(uid)
+                          ? const Color.fromARGB(255, 40, 120, 40)
+                          : const Color.fromARGB(255, 110, 60, 60),
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ),
+
+        const Divider(height: 1, color: Color.fromARGB(40, 110, 60, 60)),
+
+        // Event list for selected day
+        Expanded(
+          child: selectedEvents.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No events on this day.',
+                    style: TextStyle(
+                      color: Color.fromARGB(150, 70, 40, 20),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: selectedEvents.length,
+                  itemBuilder: (context, index) => EventCard(
+                    event: selectedEvents[index],
+                    clubId: widget.club.id,
+                    ownerUid: widget.club.ownerUid,
+                  ),
+                ),
+        ),
+
+        // Add event button
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CreateEventScreen(clubId: widget.club.id),
+                ),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Event'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 110, 60, 60),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
+
+
