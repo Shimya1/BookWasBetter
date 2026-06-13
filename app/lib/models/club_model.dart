@@ -1,5 +1,6 @@
 import 'package:app/models/activity_model.dart';
 import 'package:app/models/event_model.dart';
+import 'package:app/models/message_model.dart';
 import 'package:app/models/tag_model.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:math';
@@ -16,6 +17,7 @@ class Club {
   final List<String> memberUids;
   final List<ActivityEntry> activities;
   final List<Tag> tags = [];
+  final List<Message> messages;
 
   Club({
     String? id,
@@ -24,6 +26,7 @@ class Club {
     this.memberUids = const [],
     this.activities = const [],
     this.events = const [],
+    this.messages = const [],
     String? inviteCode,
     DateTime? createdAt,
   })  : id = id ?? _uuid.v4(),
@@ -61,6 +64,7 @@ class Club {
   Club copyWith({
   List<ActivityEntry>? activities,
   List<ClubEvent>? events,
+  List<Message>? messages,
 }) {
   return Club(
     id: id,
@@ -70,6 +74,7 @@ class Club {
     memberUids: memberUids,
     activities: activities ?? this.activities,
     events: events ?? this.events,
+    messages: messages ?? this.messages,
   );
 }
 }

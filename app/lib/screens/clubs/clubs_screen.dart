@@ -137,7 +137,6 @@ class _ClubList extends StatelessWidget {
       itemCount: clubs.length,
       itemBuilder: (context, index) {
         final club = clubs[index];
-        final isOwner = club.ownerUid == FirebaseAuth.instance.currentUser?.uid;
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(

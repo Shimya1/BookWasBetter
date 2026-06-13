@@ -1,11 +1,11 @@
 import 'dart:async';
-
 import 'package:app/models/activity_model.dart';
 import 'package:app/models/appState.dart';
 import 'package:app/models/club_member_model.dart';
 import 'package:app/models/club_model.dart';
 import 'package:app/models/event_model.dart';
 import 'package:app/models/join_request_model.dart';
+import 'package:app/models/message_model.dart';
 import 'package:app/widgets/event_card.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -24,15 +24,38 @@ class ClubDetailScreen extends StatefulWidget {
   State<ClubDetailScreen> createState() => _ClubDetailScreenState();
 }
 
-class _ClubDetailScreenState extends State<ClubDetailScreen> {
+class _ClubDetailScreenState extends State<ClubDetailScreen>
+    with SingleTickerProviderStateMixin {
   late Club _club;
   StreamSubscription? _clubSub;
   StreamSubscription? _activitySub;
   StreamSubscription? _eventsSub;
+  StreamSubscription? _messagesSub;
+  late TabController _tabController;
+  int _unreadMessages = 0;
+  DateTime _lastReadAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
     super.initState();
+    _initLastReadAt();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.index == 2 && mounted) {
+        final uid = FirebaseAuth.instance.currentUser!.uid;
+        final now = DateTime.now();
+        setState(() {
+          _unreadMessages = 0;
+          _lastReadAt = now;
+        });
+        FirebaseFirestore.instance
+            .collection('clubs')
+            .doc(widget.club.id)
+            .collection('members')
+            .doc(uid)
+            .update({'lastReadAt': now.toIso8601String()});
+      }
+    });
     _club = widget.club;
     _clubSub = FirebaseFirestore.instance
         .collection('clubs')
@@ -84,13 +107,61 @@ class _ClubDetailScreenState extends State<ClubDetailScreen> {
         });
       }
     });
+
+    _initLastReadAt().then((_) {
+      _messagesSub = FirebaseFirestore.instance
+          .collection('clubs')
+          .doc(widget.club.id)
+          .collection('messages')
+          .orderBy('createdAt', descending: true)
+          .limit(15)
+          .snapshots()
+          .listen((snapshot) {
+        if (!mounted) return;
+        final messages = snapshot.docs
+            .map((doc) => Message.fromMap(doc.id, doc.data()))
+            .toList();
+
+        final newUnread = _tabController.index != 2
+            ? messages.where((m) => m.createdAt.isAfter(_lastReadAt)).length
+            : 0;
+
+        setState(() {
+          _club = _club.copyWith(messages: messages);
+          _unreadMessages = newUnread;
+        });
+      });
+    });
+  }
+
+  Future<void> _initLastReadAt() async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final memberDoc = await FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.club.id)
+        .collection('members')
+        .doc(uid)
+        .get();
+
+    if (memberDoc.exists && mounted) {
+      final stored = memberDoc.data()?['lastReadAt'] as String?;
+      if (stored != null) {
+        setState(() {
+          _lastReadAt = DateTime.parse(stored);
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _clubSub?.cancel();
+    _messagesSub?.cancel();
     _activitySub?.cancel();
     _eventsSub?.cancel();
+    _tabController.dispose();
+    _messagesSub?.cancel();
+
     super.dispose();
   }
 
@@ -98,58 +169,96 @@ class _ClubDetailScreenState extends State<ClubDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        backgroundColor: const Color.fromARGB(255, 240, 228, 185),
-        appBar: AppBar(
-          backgroundColor: const Color.fromARGB(255, 110, 60, 60),
-          iconTheme: const IconThemeData(color: Colors.white),
-          actions: [
-            if (_isOwner && _club.memberUids.length == 1)
-              IconButton(
-                icon: const Icon(Icons.delete_forever, color: Colors.white),
-                tooltip: 'Delete club',
-                onPressed: () => _confirmDelete(context),
+    return Scaffold(
+      backgroundColor: const Color.fromARGB(255, 240, 228, 185),
+      appBar: AppBar(
+        backgroundColor: const Color.fromARGB(255, 110, 60, 60),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.people_outline, color: Colors.white),
+            tooltip: 'Members',
+            onPressed: () => showModalBottomSheet(
+              context: context,
+              backgroundColor: const Color.fromARGB(255, 240, 228, 185),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-            if (_isOwner && _club.memberUids.length > 1)
-              IconButton(
-                icon: const Icon(Icons.swap_horiz, color: Colors.white),
-                tooltip: 'Transfer ownership',
-                onPressed: () => _confirmTransfer(context),
-              ),
-            if (!_isOwner)
-              IconButton(
-                icon: const Icon(Icons.exit_to_app, color: Colors.white),
-                tooltip: 'Leave club',
-                onPressed: () => _confirmLeave(context),
-              ),
-          ],
-          title: Text(
-            _club.name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+              builder: (_) => _MembersSheet(club: _club),
             ),
           ),
-          bottom: const TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white60,
-            indicatorColor: Colors.white,
-            tabs: [
-              Tab(text: 'Overview'),
-              Tab(text: 'Events'),
-              Tab(text: 'Members'),
-            ],
+          if (_isOwner && _club.memberUids.length == 1)
+            IconButton(
+              icon: const Icon(Icons.delete_forever, color: Colors.white),
+              tooltip: 'Delete club',
+              onPressed: () => _confirmDelete(context),
+            ),
+          if (_isOwner && _club.memberUids.length > 1)
+            IconButton(
+              icon: const Icon(Icons.swap_horiz, color: Colors.white),
+              tooltip: 'Transfer ownership',
+              onPressed: () => _confirmTransfer(context),
+            ),
+          if (!_isOwner)
+            IconButton(
+              icon: const Icon(Icons.exit_to_app, color: Colors.white),
+              tooltip: 'Leave club',
+              onPressed: () => _confirmLeave(context),
+            ),
+        ],
+        title: Text(
+          _club.name,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
           ),
         ),
-        body: TabBarView(
-          children: [
-            _OverviewTab(club: _club, isOwner: _isOwner),
-            _EventsTab(club: _club),
-            _MembersTab(club: _club, isOwner: _isOwner),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          indicatorColor: Colors.white,
+          tabs: [
+            const Tab(text: 'Overview'),
+            const Tab(text: 'Events'),
+            Tab(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Text('Chat'),
+                  if (_unreadMessages > 0)
+                    Positioned(
+                      top: -6,
+                      right: -14,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Color.fromARGB(255, 170, 40, 40),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$_unreadMessages',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _OverviewTab(club: _club, isOwner: _isOwner),
+          _EventsTab(club: _club),
+          _ChatTab(club: _club, streamedMessages: _club.messages),
+        ],
       ),
     );
   }
@@ -707,196 +816,6 @@ class _RecentActivityCard extends StatelessWidget {
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 }
-// ─── Members Tab ──────────────────────────────────────────────────────────────
-
-class _MembersTab extends StatelessWidget {
-  final Club club;
-  final bool isOwner;
-  const _MembersTab({required this.club, required this.isOwner});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('clubs')
-          .doc(club.id)
-          .collection('members')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(
-            child: CircularProgressIndicator(
-              color: Color.fromARGB(255, 110, 60, 60),
-            ),
-          );
-        }
-
-        final members = snapshot.data!.docs
-            .map(
-                (doc) => ClubMember.fromMap(doc.data() as Map<String, dynamic>))
-            .toList();
-
-        members.sort((a, b) {
-          if (a.role == ClubRole.owner) return -1;
-          if (b.role == ClubRole.owner) return 1;
-          return 0;
-        });
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: members.length,
-          itemBuilder: (context, index) {
-            final member = members[index];
-            final isMe = member.uid == FirebaseAuth.instance.currentUser?.uid;
-
-            return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(member.uid)
-                  .get(),
-              builder: (context, profileSnapshot) {
-                String displayName = isMe ? 'You' : 'Loading...';
-                String avatarUrl = '';
-
-                if (profileSnapshot.hasData && profileSnapshot.data!.exists) {
-                  final data =
-                      profileSnapshot.data!.data() as Map<String, dynamic>;
-                  final name = data['displayName'] as String? ?? '';
-                  displayName = isMe
-                      ? 'You'
-                      : name.isNotEmpty
-                          ? name
-                          : 'Unknown';
-                  avatarUrl = data['avatarUrl'] as String? ?? '';
-                }
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: const Color.fromARGB(220, 255, 250, 235),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.brown.withAlpha(30),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      radius: 22,
-                      backgroundColor: member.role == ClubRole.owner
-                          ? const Color.fromARGB(255, 110, 60, 60)
-                          : const Color.fromARGB(255, 200, 180, 150),
-                      backgroundImage:
-                          avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                      child: avatarUrl.isEmpty
-                          ? Text(
-                              displayName.isNotEmpty &&
-                                      displayName != 'Loading...'
-                                  ? displayName[0].toUpperCase()
-                                  : '?',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: member.role == ClubRole.owner
-                                    ? Colors.white
-                                    : const Color.fromARGB(255, 110, 60, 60),
-                              ),
-                            )
-                          : null,
-                    ),
-                    title: Text(
-                      displayName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                        color: Color.fromARGB(255, 70, 40, 20),
-                        fontSize: 14,
-                      ),
-                    ),
-                    subtitle: Text(
-                      member.role == ClubRole.owner ? 'Owner' : 'Member',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: member.role == ClubRole.owner
-                            ? const Color.fromARGB(200, 110, 60, 60)
-                            : const Color.fromARGB(150, 70, 40, 20),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// ─── Placeholder card ─────────────────────────────────────────────────────────
-
-class _PlaceholderCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String message;
-  const _PlaceholderCard({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color.fromARGB(220, 255, 250, 235),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.brown.withAlpha(40),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon,
-                  size: 18, color: const Color.fromARGB(200, 110, 60, 60)),
-              const SizedBox(width: 8),
-              Text(
-                title.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                  color: Color.fromARGB(160, 70, 40, 20),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color.fromARGB(150, 70, 40, 20),
-              fontStyle: FontStyle.italic,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ─── Events Tab ──────────────────────────────────────────────────────────────
 class _EventsTab extends StatefulWidget {
@@ -1058,4 +977,544 @@ class _EventsTabState extends State<_EventsTab> {
   }
 }
 
+class _ChatTab extends StatefulWidget {
+  final Club club;
+  final List<Message> streamedMessages;
+  const _ChatTab({required this.club, required this.streamedMessages});
 
+  @override
+  State<_ChatTab> createState() => _ChatTabState();
+}
+
+class _ChatTabState extends State<_ChatTab> {
+  final _controller = TextEditingController();
+  final _scrollController = ScrollController();
+  List<Message> _olderMessages = [];
+  DocumentSnapshot? _oldestDoc;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  bool _initialPaginationDone = false;
+
+  static const int _pageSize = 15;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _setOldestDoc();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _setOldestDoc() async {
+    if (widget.streamedMessages.isEmpty) return;
+    final oldest = widget.streamedMessages.last;
+    final doc = await FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.club.id)
+        .collection('messages')
+        .doc(oldest.id)
+        .get();
+    _oldestDoc = doc;
+    _initialPaginationDone = true;
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore ||
+        !_hasMore ||
+        _oldestDoc == null ||
+        !_initialPaginationDone) return;
+    setState(() => _loadingMore = true);
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.club.id)
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .startAfterDocument(_oldestDoc!)
+        .limit(_pageSize)
+        .get();
+
+    if (!mounted) return;
+
+    final more = snapshot.docs
+        .map((doc) => Message.fromMap(doc.id, doc.data()))
+        .toList();
+
+    setState(() {
+      _olderMessages.addAll(more);
+      _oldestDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : _oldestDoc;
+      _hasMore = snapshot.docs.length == _pageSize;
+      _loadingMore = false;
+    });
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    _controller.clear();
+
+    final profile = context.read<StateModel>().profile;
+    final message = Message(
+      uid: profile!.uid,
+      displayName: profile.displayName,
+      avatarUrl: profile.avatarUrl ?? '',
+      text: text,
+    );
+
+    await FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.club.id)
+        .collection('messages')
+        .doc(message.id)
+        .set(message.toMap());
+  }
+
+  List<Message> get _allMessages {
+    final streamedIds = widget.streamedMessages.map((m) => m.id).toSet();
+    final older =
+        _olderMessages.where((m) => !streamedIds.contains(m.id)).toList();
+    return [...widget.streamedMessages, ...older];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final messages = _allMessages;
+
+    return Column(
+      children: [
+        Expanded(
+          child: messages.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No messages yet. Say hello!',
+                    style: TextStyle(
+                      color: Color.fromARGB(150, 70, 40, 20),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  controller: _scrollController,
+                  reverse: true,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  itemCount: messages.length + (_loadingMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == messages.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(8),
+                          child: CircularProgressIndicator(
+                            color: Color.fromARGB(255, 110, 60, 60),
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      );
+                    }
+                    final message = messages[index];
+                    final isMe =
+                        message.uid == FirebaseAuth.instance.currentUser?.uid;
+                    return _MessageBubble(message: message, isMe: isMe);
+                  },
+                ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color.fromARGB(255, 255, 250, 235),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.brown.withAlpha(20),
+                blurRadius: 4,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    hintText: 'Message...',
+                    hintStyle: const TextStyle(
+                      color: Color.fromARGB(120, 70, 40, 20),
+                    ),
+                    filled: true,
+                    fillColor: const Color.fromARGB(255, 240, 228, 185),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                  ),
+                  style:
+                      const TextStyle(color: Color.fromARGB(255, 70, 40, 20)),
+                  textCapitalization: TextCapitalization.sentences,
+                  onSubmitted: (_) => _sendMessage(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _sendMessage,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: const BoxDecoration(
+                    color: Color.fromARGB(255, 110, 60, 60),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.send, color: Colors.white, size: 20),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  final Message message;
+  final bool isMe;
+  const _MessageBubble({required this.message, required this.isMe});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isMe) ...[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: const Color.fromARGB(255, 200, 180, 150),
+              backgroundImage: message.avatarUrl.isNotEmpty
+                  ? NetworkImage(message.avatarUrl)
+                  : null,
+              child: message.avatarUrl.isEmpty
+                  ? Text(
+                      message.displayName.isNotEmpty
+                          ? message.displayName[0].toUpperCase()
+                          : '?',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color.fromARGB(255, 110, 60, 60),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Column(
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                if (!isMe)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 2),
+                    child: Text(
+                      message.displayName,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color.fromARGB(180, 70, 40, 20),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isMe
+                        ? const Color.fromARGB(255, 110, 60, 60)
+                        : const Color.fromARGB(220, 255, 250, 235),
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft: Radius.circular(isMe ? 16 : 4),
+                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.brown.withAlpha(20),
+                        blurRadius: 3,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    message.text,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isMe
+                          ? Colors.white
+                          : const Color.fromARGB(255, 70, 40, 20),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+                  child: Text(
+                    _formatTime(message.createdAt),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color.fromARGB(120, 70, 40, 20),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isMe) const SizedBox(width: 8),
+        ],
+      ),
+    );
+  }
+
+  String _formatTime(DateTime dt) {
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
+}
+
+// ─── MembersSheet ──────────────────────────────────────────────────────────────
+
+class _MembersSheet extends StatelessWidget {
+  final Club club;
+  const _MembersSheet({required this.club});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Handle
+        Container(
+          margin: const EdgeInsets.only(top: 12),
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: const Color.fromARGB(100, 110, 60, 60),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Members',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Color.fromARGB(255, 70, 40, 20),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('clubs')
+                .doc(club.id)
+                .collection('members')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: Color.fromARGB(255, 110, 60, 60),
+                  ),
+                );
+              }
+
+              final members = snapshot.data!.docs
+                  .map((doc) =>
+                      ClubMember.fromMap(doc.data() as Map<String, dynamic>))
+                  .toList();
+
+              members.sort((a, b) {
+                if (a.role == ClubRole.owner) return -1;
+                if (b.role == ClubRole.owner) return 1;
+                return 0;
+              });
+
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: members.length,
+                itemBuilder: (context, index) {
+                  final member = members[index];
+                  final isMe =
+                      member.uid == FirebaseAuth.instance.currentUser?.uid;
+
+                  return FutureBuilder<DocumentSnapshot>(
+                    future: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(member.uid)
+                        .get(),
+                    builder: (context, profileSnapshot) {
+                      String displayName = isMe ? 'You' : 'Loading...';
+                      String avatarUrl = '';
+
+                      if (profileSnapshot.hasData &&
+                          profileSnapshot.data!.exists) {
+                        final data = profileSnapshot.data!.data()
+                            as Map<String, dynamic>;
+                        final name = data['displayName'] as String? ?? '';
+                        displayName = isMe
+                            ? 'You'
+                            : name.isNotEmpty
+                                ? name
+                                : 'Unknown';
+                        avatarUrl = data['avatarUrl'] as String? ?? '';
+                      }
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: const Color.fromARGB(220, 255, 250, 235),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.brown.withAlpha(30),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            radius: 22,
+                            backgroundColor: member.role == ClubRole.owner
+                                ? const Color.fromARGB(255, 110, 60, 60)
+                                : const Color.fromARGB(255, 200, 180, 150),
+                            backgroundImage: avatarUrl.isNotEmpty
+                                ? NetworkImage(avatarUrl)
+                                : null,
+                            child: avatarUrl.isEmpty
+                                ? Text(
+                                    displayName.isNotEmpty &&
+                                            displayName != 'Loading...'
+                                        ? displayName[0].toUpperCase()
+                                        : '?',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: member.role == ClubRole.owner
+                                          ? Colors.white
+                                          : const Color.fromARGB(
+                                              255, 110, 60, 60),
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          title: Text(
+                            displayName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: Color.fromARGB(255, 70, 40, 20),
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: Text(
+                            member.role == ClubRole.owner ? 'Owner' : 'Member',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: member.role == ClubRole.owner
+                                  ? const Color.fromARGB(200, 110, 60, 60)
+                                  : const Color.fromARGB(150, 70, 40, 20),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Placeholder card ─────────────────────────────────────────────────────────
+
+class _PlaceholderCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  const _PlaceholderCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color.fromARGB(220, 255, 250, 235),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.brown.withAlpha(40),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon,
+                  size: 18, color: const Color.fromARGB(200, 110, 60, 60)),
+              const SizedBox(width: 8),
+              Text(
+                title.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: Color.fromARGB(160, 70, 40, 20),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color.fromARGB(150, 70, 40, 20),
+              fontStyle: FontStyle.italic,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
