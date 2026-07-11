@@ -11,12 +11,12 @@ class AuthScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color.fromARGB(255, 118, 141, 149),
+      color: Color.fromARGB(255, 221, 209, 153),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset('assets/images/icon-alpha.png', width: 300),
+            Image.asset('assets/images/title-image.png', width: 300),
             const SizedBox(height: 30),
             AuthWidget(),
           ],

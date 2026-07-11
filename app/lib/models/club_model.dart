@@ -12,17 +12,21 @@ class Club {
   final String name;
   final String ownerUid;
   final String inviteCode;
+  final String? activeBookId;
   final DateTime createdAt;
   final List<ClubEvent> events;
   final List<String> memberUids;
   final List<ActivityEntry> activities;
   final List<Tag> tags = [];
   final List<Message> messages;
+  final String? activeElectionId;
 
   Club({
     String? id,
     required this.name,
     required this.ownerUid,
+    this.activeBookId,
+    this.activeElectionId,
     this.memberUids = const [],
     this.activities = const [],
     this.events = const [],
@@ -44,8 +48,10 @@ class Club {
       'name': name,
       'ownerUid': ownerUid,
       'inviteCode': inviteCode,
+      'activeBookId': activeBookId,
       'createdAt': createdAt.toIso8601String(),
       'memberUids': memberUids,
+      'activeElectionId': activeElectionId,
     };
   }
 
@@ -55,6 +61,8 @@ class Club {
       name: map['name'] as String,
       ownerUid: map['ownerUid'] as String,
       inviteCode: map['inviteCode'] as String,
+      activeBookId: map['activeBookId'] as String?,
+      activeElectionId: map['activeElectionId'] as String?,
       memberUids: List<String>.from(map['memberUids'] ?? []),
       createdAt: DateTime.parse(map['createdAt'] as String),
     );
@@ -72,6 +80,8 @@ class Club {
     ownerUid: ownerUid,
     inviteCode: inviteCode,
     memberUids: memberUids,
+    activeBookId: activeBookId,
+    activeElectionId: activeElectionId,
     activities: activities ?? this.activities,
     events: events ?? this.events,
     messages: messages ?? this.messages,

@@ -14,6 +14,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:app/models/election_model.dart';
+import 'package:app/models/club_library_model.dart';
 
 class StateModel extends ChangeNotifier {
   final FirebaseFirestore _db;
@@ -499,6 +501,8 @@ Future<void> deleteClub(String clubId) async {
 
     await batch.commit();
 
+    
+
     try {
       await _writeActivity(
         clubId: clubId,
@@ -507,6 +511,252 @@ Future<void> deleteClub(String clubId) async {
           actorUid: uid,
           actorName: _profile?.displayName ?? 'A member',
           targetName: newOwnerName,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Activity write failed: $e');
+    }
+  }
+  Future<void> _rolloverLibraryEntry({
+    required WriteBatch batch,
+    required String clubId,
+    required String googleBooksId,
+    required String title,
+    required String author,
+    required String coverUrl,
+    required BookSelectionMethod method,
+    String? selectedByUid,
+    String? selectedByName,
+  }) async {
+    final libraryRef =
+        _db.collection('clubs').doc(clubId).collection('libraryBooks');
+
+    final openEntry =
+        await libraryRef.where('finishedAt', isNull: true).limit(1).get();
+    if (openEntry.docs.isNotEmpty) {
+      batch.update(openEntry.docs.first.reference, {
+        'finishedAt': DateTime.now().toUtc().toIso8601String(),
+      });
+    }
+
+    final entry = ClubLibraryEntry(
+      googleBooksId: googleBooksId,
+      title: title,
+      author: author,
+      coverUrl: coverUrl,
+      selectionMethod: method,
+      selectedByUid: selectedByUid,
+      selectedByName: selectedByName,
+    );
+    batch.set(libraryRef.doc(entry.id), entry.toMap());
+  }
+
+  Future<void> selectActiveBook({
+    required String clubId,
+    required BookSearchResult book,
+  }) async {
+    final uid = _auth.currentUser!.uid;
+    final batch = _db.batch();
+
+    final libraryBookRef =
+        _db.collection('library_books').doc(book.googleBooksId);
+    batch.set(
+      libraryBookRef,
+      {
+        'googleBooksId': book.googleBooksId,
+        'title': book.title,
+        'author': book.author,
+        'coverUrl': book.coverUrl,
+        'description': book.description,
+        'categories': book.categories,
+      },
+      SetOptions(merge: true),
+    );
+
+    batch.update(_db.collection('clubs').doc(clubId), {
+      'activeBookId': book.googleBooksId,
+    });
+
+        await _rolloverLibraryEntry(
+      batch: batch,
+      clubId: clubId,
+      googleBooksId: book.googleBooksId,
+      title: book.title,
+      author: book.author,
+      coverUrl: book.coverUrl,
+      method: BookSelectionMethod.owner,
+      selectedByUid: uid,
+      selectedByName: _profile?.displayName,
+    );
+
+    await batch.commit();
+
+    try {
+      await _writeActivity(
+        clubId: clubId,
+        entry: ActivityEntry(
+          type: ActivityType.bookSelected,
+          actorUid: uid,
+          actorName: _profile?.displayName ?? 'A member',
+          targetName: book.title,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Activity write failed: $e');
+    }
+  }
+
+  Future<void> startElection({
+    required String clubId,
+    required DateTime votingDate,
+    required DateTime votingEndTime,
+  }) async {
+    final uid = _auth.currentUser!.uid;
+    final club = _clubs.firstWhere((c) => c.id == clubId);
+
+    final election = Election(
+      createdByUid: uid,
+      votingDate: votingDate,
+      votingEndTime: votingEndTime,
+      eligibleVoterUids: club.memberUids,
+    );
+
+    final batch = _db.batch();
+    final electionRef = _db
+        .collection('clubs')
+        .doc(clubId)
+        .collection('elections')
+        .doc(election.id);
+    batch.set(electionRef, election.toMap());
+    batch.update(_db.collection('clubs').doc(clubId), {
+      'activeElectionId': election.id,
+    });
+    await batch.commit();
+
+    try {
+      await _writeActivity(
+        clubId: clubId,
+        entry: ActivityEntry(
+          type: ActivityType.electionStarted,
+          actorUid: uid,
+          actorName: _profile?.displayName ?? 'A member',
+        ),
+      );
+    } catch (e) {
+      debugPrint('Activity write failed: $e');
+    }
+  }
+
+  Future<void> submitNomination({
+    required String clubId,
+    required String electionId,
+    required BookSearchResult book,
+  }) async {
+    final uid = _auth.currentUser!.uid;
+    final batch = _db.batch();
+
+    final libraryBookRef =
+        _db.collection('library_books').doc(book.googleBooksId);
+    batch.set(
+      libraryBookRef,
+      {
+        'googleBooksId': book.googleBooksId,
+        'title': book.title,
+        'author': book.author,
+        'coverUrl': book.coverUrl,
+        'description': book.description,
+        'categories': book.categories,
+      },
+      SetOptions(merge: true),
+    );
+
+    final nomination = Nomination(
+      uid: uid,
+      googleBooksId: book.googleBooksId,
+      title: book.title,
+      author: book.author,
+      coverUrl: book.coverUrl,
+    );
+    final nominationRef = _db
+        .collection('clubs')
+        .doc(clubId)
+        .collection('elections')
+        .doc(electionId)
+        .collection('nominations')
+        .doc(uid);
+    batch.set(nominationRef, nomination.toMap());
+
+    await batch.commit();
+  }
+
+  Future<void> castVote({
+    required String clubId,
+    required String electionId,
+    required String googleBooksId,
+  }) async {
+    final uid = _auth.currentUser!.uid;
+    final vote = Vote(uid: uid, googleBooksId: googleBooksId);
+
+    await _db
+        .collection('clubs')
+        .doc(clubId)
+        .collection('elections')
+        .doc(electionId)
+        .collection('votes')
+        .doc(uid)
+        .set(vote.toMap());
+  }
+
+  Future<void> resolveTie({
+    required String clubId,
+    required String electionId,
+    required String googleBooksId,
+  }) async {
+    final uid = _auth.currentUser!.uid;
+    final libraryDoc =
+        await _db.collection('library_books').doc(googleBooksId).get();
+    final libraryData = libraryDoc.data();
+    final title = libraryData?['title'] as String? ?? 'the selected book';
+    final author = libraryData?['author'] as String? ?? '';
+    final coverUrl = libraryData?['coverUrl'] as String? ?? '';
+
+    final batch = _db.batch();
+    batch.update(
+      _db
+          .collection('clubs')
+          .doc(clubId)
+          .collection('elections')
+          .doc(electionId),
+      {
+        'winningBookId': googleBooksId,
+        'closedAt': DateTime.now().toIso8601String(),
+      },
+    );
+    batch.update(_db.collection('clubs').doc(clubId), {
+      'activeBookId': googleBooksId,
+      'activeElectionId': null,
+    });
+
+    await _rolloverLibraryEntry(
+      batch: batch,
+      clubId: clubId,
+      googleBooksId: googleBooksId,
+      title: title,
+      author: author,
+      coverUrl: coverUrl,
+      method: BookSelectionMethod.election,
+    );
+    
+    await batch.commit();
+
+    try {
+      await _writeActivity(
+        clubId: clubId,
+        entry: ActivityEntry(
+          type: ActivityType.bookSelected,
+          actorUid: uid,
+          actorName: _profile?.displayName ?? 'A member',
+          targetName: title,
         ),
       );
     } catch (e) {

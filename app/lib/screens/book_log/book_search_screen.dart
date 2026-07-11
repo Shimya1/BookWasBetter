@@ -11,7 +11,8 @@ const _fetchCoverUrl =
     'https://us-central1-thebookwasbetter-d4381.cloudfunctions.net/fetchAndStoreCover';
 
 class BookSearchScreen extends StatefulWidget {
-  const BookSearchScreen({super.key});
+  final void Function(BookSearchResult)? onBookSelected;
+  const BookSearchScreen({super.key, this.onBookSelected});
 
   @override
   State<BookSearchScreen> createState() => _BookSearchScreenState();
@@ -136,6 +137,10 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
   }
 
   void _showAddDialog(BookSearchResult result) {
+    if (widget.onBookSelected != null) {
+    widget.onBookSelected!(result);
+    return;
+  }
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color.fromARGB(255, 250, 243, 220),

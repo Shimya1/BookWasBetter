@@ -1,7 +1,6 @@
 import 'package:uuid/uuid.dart';
 
-enum ActivityType { memberJoined, memberLeft, bookSelected, clubCreated, ownershipTransferred, eventCreated, eventDeleted }
-
+enum ActivityType { memberJoined, memberLeft, bookSelected, clubCreated, ownershipTransferred, eventCreated, eventDeleted, electionStarted }
 class ActivityEntry {
   final String id;
   final ActivityType type;
@@ -26,9 +25,10 @@ class ActivityEntry {
         ActivityType.eventCreated => '$actorName created a new event: ${targetName ?? 'an event'}',
         ActivityType.eventDeleted => '$actorName deleted an event: ${targetName ?? 'an event'}',
         ActivityType.memberLeft => '$actorName left the club',
-        ActivityType.bookSelected => '$actorName selected a new book',
+        ActivityType.bookSelected => '$actorName selected "${targetName ?? 'a new book'}" as the next read',
+        ActivityType.electionStarted => '$actorName started a vote for the next book',
         ActivityType.ownershipTransferred => '$actorName transferred ownership to ${targetName ?? 'a member'}',
-
+        
       };
 
   Map<String, dynamic> toMap() => {

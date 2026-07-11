@@ -6,6 +6,9 @@ import 'package:app/models/club_model.dart';
 import 'package:app/models/event_model.dart';
 import 'package:app/models/join_request_model.dart';
 import 'package:app/models/message_model.dart';
+import 'package:app/models/library_book_model.dart';
+import 'package:app/screens/book_log/book_search_screen.dart';
+import 'package:app/services/google_books_service.dart';
 import 'package:app/widgets/event_card.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,6 +18,8 @@ import 'package:provider/provider.dart';
 import 'package:app/models/event_model.dart';
 import 'package:app/screens/clubs/create_event_screen.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:app/screens/clubs/election_screen.dart';
+import 'package:app/screens/clubs/club_library_screen.dart';
 
 class ClubDetailScreen extends StatefulWidget {
   final Club club;
@@ -26,20 +31,35 @@ class ClubDetailScreen extends StatefulWidget {
 
 class _ClubDetailScreenState extends State<ClubDetailScreen>
     with SingleTickerProviderStateMixin {
-  late Club _club;
-  StreamSubscription? _clubSub;
   StreamSubscription? _activitySub;
   StreamSubscription? _eventsSub;
   StreamSubscription? _messagesSub;
+  List<ActivityEntry> _activities = [];
+  List<ClubEvent> _events = [];
+  List<Message> _messages = [];
   late TabController _tabController;
   int _unreadMessages = 0;
   DateTime _lastReadAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+
+  Club get _club {
+    final stateModel = context.read<StateModel>();
+    final base = stateModel.clubs.firstWhere(
+      (c) => c.id == widget.club.id,
+      orElse: () => widget.club,
+    );
+    return base.copyWith(
+      activities: _activities,
+      events: _events,
+      messages: _messages,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     _initLastReadAt();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       if (_tabController.index == 2 && mounted) {
         final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -56,19 +76,6 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
             .update({'lastReadAt': now.toIso8601String()});
       }
     });
-    _club = widget.club;
-    _clubSub = FirebaseFirestore.instance
-        .collection('clubs')
-        .doc(widget.club.id)
-        .snapshots()
-        .listen((doc) {
-      if (doc.exists && mounted) {
-        setState(() {
-          _club = Club.fromMap(doc.id, doc.data()!);
-        });
-      }
-    });
-
     _activitySub = FirebaseFirestore.instance
         .collection('clubs')
         .doc(widget.club.id)
@@ -82,7 +89,7 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
           .toList();
       if (mounted) {
         setState(() {
-          _club = _club.copyWith(activities: entries);
+          _activities = entries;
         });
       }
     });
@@ -103,7 +110,7 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
           .toList();
       if (mounted) {
         setState(() {
-          _club = _club.copyWith(events: events);
+          _events = events;
         });
       }
     });
@@ -127,7 +134,7 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
             : 0;
 
         setState(() {
-          _club = _club.copyWith(messages: messages);
+          _messages = messages;
           _unreadMessages = newUnread;
         });
       });
@@ -155,12 +162,10 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
 
   @override
   void dispose() {
-    _clubSub?.cancel();
     _messagesSub?.cancel();
     _activitySub?.cancel();
     _eventsSub?.cancel();
     _tabController.dispose();
-    _messagesSub?.cancel();
 
     super.dispose();
   }
@@ -169,6 +174,8 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
 
   @override
   Widget build(BuildContext context) {
+
+    context.watch<StateModel>();
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 240, 228, 185),
       appBar: AppBar(
@@ -220,6 +227,7 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
           indicatorColor: Colors.white,
           tabs: [
             const Tab(text: 'Overview'),
+            const Tab(text: 'Library'),
             const Tab(text: 'Events'),
             Tab(
               child: Stack(
@@ -256,6 +264,7 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
         controller: _tabController,
         children: [
           _OverviewTab(club: _club, isOwner: _isOwner),
+          ClubLibraryScreen(clubId: _club.id),
           _EventsTab(club: _club),
           _ChatTab(club: _club, streamedMessages: _club.messages),
         ],
@@ -264,7 +273,6 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
   }
 
   Future<void> _confirmTransfer(BuildContext context) async {
-    // Fetch members excluding self
     final snapshot = await FirebaseFirestore.instance
         .collection('clubs')
         .doc(_club.id)
@@ -493,13 +501,14 @@ class _OverviewTab extends StatelessWidget {
           const SizedBox(height: 16),
         ],
 
-        // Current book placeholder
-        _PlaceholderCard(
-          icon: Icons.menu_book,
-          title: 'Current Book',
-          message: 'No book selected yet.\nStart a vote to pick one!',
-        ),
+        // Current book
+        _CurrentBookCard(club: club, isOwner: isOwner),
         const SizedBox(height: 16),
+
+        if (club.activeElectionId != null) ...[
+          _ElectionCard(club: club),
+          const SizedBox(height: 16),
+        ],
 
         _RecentActivityCard(activities: club.activities),
       ],
@@ -977,6 +986,7 @@ class _EventsTabState extends State<_EventsTab> {
   }
 }
 
+// ─── Chat Tab ──────────────────────────────────────────────────────────────
 class _ChatTab extends StatefulWidget {
   final Club club;
   final List<Message> streamedMessages;
@@ -1456,6 +1466,295 @@ class _MembersSheet extends StatelessWidget {
   }
 }
 
+// ─── Current Book Card ─────────────────────────────────────────────────────
+
+class _CurrentBookCard extends StatelessWidget {
+  final Club club;
+  final bool isOwner;
+  const _CurrentBookCard({required this.club, required this.isOwner});
+
+  void _openPicker(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BookSearchScreen(
+          onBookSelected: (result) async {
+            await context.read<StateModel>().selectActiveBook(
+                  clubId: club.id,
+                  book: result,
+                );
+            if (context.mounted) Navigator.of(context).pop();
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startElection(BuildContext context) async {
+    final now = DateTime.now();
+    final votingDate = await showDatePicker(
+      context: context,
+      initialDate: now.add(const Duration(days: 7)),
+      firstDate: now.add(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 90)),
+      helpText: 'When should voting happen?',
+    );
+    if (votingDate == null) return;
+
+    final endTime = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 18, minute: 0),
+      helpText: 'What time should voting close?',
+    );
+    if (endTime == null) return;
+
+    final votingEndTime = DateTime(
+      votingDate.year,
+      votingDate.month,
+      votingDate.day,
+      endTime.hour,
+      endTime.minute,
+    );
+
+    if (context.mounted) {
+      await context.read<StateModel>().startElection(
+            clubId: club.id,
+            votingDate: votingDate,
+            votingEndTime: votingEndTime,
+          );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (club.activeBookId == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color.fromARGB(220, 255, 250, 235),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.brown.withAlpha(40),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.menu_book,
+                    size: 18, color: Color.fromARGB(200, 110, 60, 60)),
+                const SizedBox(width: 8),
+                const Text(
+                  'CURRENT BOOK',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                    color: Color.fromARGB(160, 70, 40, 20),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'No book selected yet.\nStart a vote to pick one!',
+              style: TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
+            ),
+            if (isOwner && club.activeElectionId == null) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _openPicker(context),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Pick a Book'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 110, 60, 60),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _startElection(context),
+                    icon: const Icon(Icons.how_to_vote, size: 18),
+                    label: const Text('Start a Vote'),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('library_books')
+          .doc(club.activeBookId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        final book = data != null ? LibraryBook.fromMap(data) : null;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color.fromARGB(220, 255, 250, 235),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.brown.withAlpha(40),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: book == null
+                    ? Container(
+                        width: 50,
+                        height: 74,
+                        color: const Color.fromARGB(255, 200, 180, 150),
+                      )
+                    : Image.network(
+                        book.coverUrl,
+                        width: 50,
+                        height: 74,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 50,
+                          height: 74,
+                          color: const Color.fromARGB(255, 200, 180, 150),
+                          child: const Icon(Icons.menu_book,
+                              color: Color.fromARGB(120, 110, 60, 60)),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'CURRENT BOOK',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                        color: Color.fromARGB(160, 70, 40, 20),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      book?.title ?? 'Loading...',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color.fromARGB(255, 70, 40, 20),
+                      ),
+                    ),
+                    if (book != null)
+                      Text(
+                        book.author,
+                        style: const TextStyle(
+                          color: Color.fromARGB(255, 120, 80, 50),
+                        ),
+                      ),
+                    if (isOwner && club.activeElectionId == null) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 12,
+                        children: [
+                          TextButton(
+                            onPressed: () => _openPicker(context),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Change book'),
+                          ),
+                          TextButton(
+                            onPressed: () => _startElection(context),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Start a vote for next book'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─── Election Card ─────────────────────────────────────────────────────────
+class _ElectionCard extends StatelessWidget {
+  final Club club;
+  const _ElectionCard({required this.club});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color.fromARGB(220, 255, 250, 235),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.brown.withAlpha(40),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.how_to_vote,
+              size: 22, color: Color.fromARGB(200, 110, 60, 60)),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'A vote for the next book is in progress.',
+              style: TextStyle(color: Color.fromARGB(255, 70, 40, 20)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ElectionScreen(clubId: club.id),
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color.fromARGB(255, 110, 60, 60),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Open'),
+          ),
+        ],
+      ),
+    );
+  }
+}
 // ─── Placeholder card ─────────────────────────────────────────────────────────
 
 class _PlaceholderCard extends StatelessWidget {
