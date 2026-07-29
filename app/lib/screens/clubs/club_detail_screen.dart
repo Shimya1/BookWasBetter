@@ -20,6 +20,8 @@ import 'package:app/screens/clubs/create_event_screen.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:app/screens/clubs/election_screen.dart';
 import 'package:app/screens/clubs/club_library_screen.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class ClubDetailScreen extends StatefulWidget {
   final Club club;
@@ -1474,21 +1476,72 @@ class _CurrentBookCard extends StatelessWidget {
   const _CurrentBookCard({required this.club, required this.isOwner});
 
   void _openPicker(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BookSearchScreen(
-          clubId: club.id,
-          onBookSelected: (result) async {
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => BookSearchScreen(
+        clubId: club.id,
+        onBookSelected: (result) async {
+          // Show loading while fetching/storing the cover
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const Center(
+              child: CircularProgressIndicator(
+                color: Color.fromARGB(255, 110, 60, 60),
+              ),
+            ),
+          );
+
+          try {
+            final user = FirebaseAuth.instance.currentUser!;
+            final token = await user.getIdToken();
+            const coverUrl =
+                'https://us-central1-thebookwasbetter-d4381.cloudfunctions.net/fetchAndStoreCover';
+            final coverResponse = await http.post(
+              Uri.parse(coverUrl),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'googleBooksId': result.googleBooksId}),
+            );
+
+            String resolvedCoverUrl = result.coverUrl;
+            if (coverResponse.statusCode == 200) {
+              final data =
+                  jsonDecode(coverResponse.body) as Map<String, dynamic>;
+              resolvedCoverUrl =
+                  data['coverUrl'] as String? ?? result.coverUrl;
+            }
+
+            final updatedResult = BookSearchResult(
+              googleBooksId: result.googleBooksId,
+              title: result.title,
+              author: result.author,
+              coverUrl: resolvedCoverUrl,
+              description: result.description,
+              categories: result.categories,
+            );
+
             await context.read<StateModel>().selectActiveBook(
                   clubId: club.id,
-                  book: result,
+                  book: updatedResult,
                 );
-            if (context.mounted) Navigator.of(context).pop();
-          },
-        ),
+
+            if (context.mounted) {
+              Navigator.of(context).pop(); // dismiss loading
+              Navigator.of(context).pop(); // back from search
+            }
+          } catch (e) {
+            if (context.mounted) {
+              Navigator.of(context).pop(); // dismiss loading
+            }
+          }
+        },
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _startElection(BuildContext context) async {
     final now = DateTime.now();
