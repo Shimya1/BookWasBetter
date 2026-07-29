@@ -860,6 +860,25 @@ Future<void> deleteElection({
       debugPrint('Activity write failed: $e');
     }
   }
+
+
+  Future<void> addBookToPersonalLibrary({
+  required String googleBooksId,
+  required BookStatus status,
+}) async {
+  final uid = _auth.currentUser!.uid;
+  final book = Book(
+    userId: uid,
+    googleBooksId: googleBooksId,
+    status: status,
+  );
+  await _db
+      .collection('users')
+      .doc(uid)
+      .collection('books')
+      .doc(book.id)
+      .set(book.toMap());
+}
 // ─── Profile ─────────────────────────────────────────────────────────────────
 
   void _listenToProfile(String uid) {
@@ -885,4 +904,21 @@ Future<void> deleteElection({
     final uid = _auth.currentUser!.uid;
     await _db.collection('users').doc(uid).update({'avatarUrl': avatarUrl});
   }
+
+
+  Future<void> submitFeedback({
+  required String type, // 'bug' or 'feature'
+  required String title,
+  required String description,
+}) async {
+  final uid = _auth.currentUser?.uid;
+  await _db.collection('feedback').add({
+    'type': type,
+    'title': title,
+    'description': description,
+    'userId': uid,
+    'createdAt': DateTime.now().toIso8601String(),
+  });
 }
+}
+

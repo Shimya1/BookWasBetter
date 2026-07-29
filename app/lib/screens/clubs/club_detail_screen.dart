@@ -1477,6 +1477,7 @@ class _CurrentBookCard extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => BookSearchScreen(
+          clubId: club.id,
           onBookSelected: (result) async {
             await context.read<StateModel>().selectActiveBook(
                   clubId: club.id,

@@ -1,9 +1,13 @@
+import 'package:app/models/book_view_model.dart';
 import 'package:app/models/club_library_model.dart';
 import 'package:app/models/note_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:app/models/appState.dart';
+import 'package:app/models/book_model.dart';
+import 'package:provider/provider.dart';
 
 class ClubLibraryDetailScreen extends StatelessWidget {
   final String clubId;
@@ -29,6 +33,82 @@ class ClubLibraryDetailScreen extends StatelessWidget {
     return 'Picked by ${entry.selectedByName ?? 'the owner'}';
   }
 
+  static Color _statusBg(BookStatus s) => switch (s) {
+        BookStatus.currentlyReading => const Color.fromARGB(255, 180, 230, 180),
+        BookStatus.wantToRead => const Color.fromARGB(255, 200, 220, 245),
+        BookStatus.finished => const Color.fromARGB(255, 230, 210, 170),
+        BookStatus.abandoned => const Color.fromARGB(255, 230, 200, 200),
+      };
+
+  static Color _statusFg(BookStatus s) => switch (s) {
+        BookStatus.currentlyReading => const Color.fromARGB(255, 40, 100, 40),
+        BookStatus.wantToRead => const Color.fromARGB(255, 30, 70, 140),
+        BookStatus.finished => const Color.fromARGB(255, 100, 60, 10),
+        BookStatus.abandoned => const Color.fromARGB(255, 130, 40, 40),
+      };
+
+  void _showAddToLibrarySheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color.fromARGB(255, 250, 243, 220),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Add to my library as:',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color.fromARGB(255, 70, 40, 20),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...BookStatus.values.map((s) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: _statusBg(s),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: _statusFg(s), width: 1.5),
+                    ),
+                  ),
+                  title: Text(
+                    s.displayName,
+                    style: TextStyle(
+                        color: _statusFg(s), fontWeight: FontWeight.w500),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await context.read<StateModel>().addBookToPersonalLibrary(
+                          googleBooksId: entry.googleBooksId,
+                          status: s,
+                        );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content:
+                              Text('"${entry.title}" added to your library.'),
+                          backgroundColor:
+                              const Color.fromARGB(255, 110, 60, 60),
+                        ),
+                      );
+                    }
+                  },
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -42,8 +122,7 @@ class ClubLibraryDetailScreen extends StatelessWidget {
               color: Color.fromARGB(255, 70, 40, 20),
               fontWeight: FontWeight.w600),
         ),
-        iconTheme:
-            const IconThemeData(color: Color.fromARGB(255, 110, 60, 60)),
+        iconTheme: const IconThemeData(color: Color.fromARGB(255, 110, 60, 60)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -151,8 +230,8 @@ class ClubLibraryDetailScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Text(
                     'Could not load notes: ${snap.error}',
-                    style: const TextStyle(
-                        color: Color.fromARGB(200, 70, 40, 20)),
+                    style:
+                        const TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
                   ),
                 );
               }
@@ -179,6 +258,65 @@ class ClubLibraryDetailScreen extends StatelessWidget {
               }
               return Column(
                 children: notes.map((n) => _ClubNoteCard(note: n)).toList(),
+              );
+            },
+          ),
+          Consumer<StateModel>(
+            builder: (context, state, _) {
+              final myBook = state.books.cast<BookView?>().firstWhere(
+                    (b) => b!.googleBooksId == entry.googleBooksId,
+                    orElse: () => null,
+                  );
+
+              if (myBook != null) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person_outline,
+                          size: 15, color: Color.fromARGB(160, 70, 40, 20)),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'In your library: ',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Color.fromARGB(160, 70, 40, 20)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _statusBg(myBook.status),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          myBook.status.displayName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _statusFg(myBook.status),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: OutlinedButton.icon(
+                  onPressed: () => _showAddToLibrarySheet(context),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add to my library'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color.fromARGB(255, 110, 60, 60),
+                    side: const BorderSide(
+                        color: Color.fromARGB(255, 110, 60, 60)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
               );
             },
           ),
