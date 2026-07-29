@@ -41,7 +41,6 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
   int _unreadMessages = 0;
   DateTime _lastReadAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-
   Club get _club {
     final stateModel = context.read<StateModel>();
     final base = stateModel.clubs.firstWhere(
@@ -58,7 +57,6 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
   @override
   void initState() {
     super.initState();
-    _initLastReadAt();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       if (_tabController.index == 2 && mounted) {
@@ -153,9 +151,12 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
     if (memberDoc.exists && mounted) {
       final stored = memberDoc.data()?['lastReadAt'] as String?;
       if (stored != null) {
-        setState(() {
-          _lastReadAt = DateTime.parse(stored);
-        });
+        final parsedTime = DateTime.parse(stored);
+        if (parsedTime.isAfter(_lastReadAt)) {
+          setState(() {
+            _lastReadAt = parsedTime;
+          });
+        }
       }
     }
   }
@@ -174,7 +175,6 @@ class _ClubDetailScreenState extends State<ClubDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-
     context.watch<StateModel>();
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 240, 228, 185),
@@ -1494,7 +1494,7 @@ class _CurrentBookCard extends StatelessWidget {
     final votingDate = await showDatePicker(
       context: context,
       initialDate: now.add(const Duration(days: 7)),
-      firstDate: now.add(const Duration(days: 1)),
+      firstDate: now,
       lastDate: now.add(const Duration(days: 90)),
       helpText: 'When should voting happen?',
     );

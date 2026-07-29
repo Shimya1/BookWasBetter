@@ -221,12 +221,18 @@ class StateModel extends ChangeNotifier {
   }
 
   Future<void> updateBookStatus(String bookId, BookStatus newStatus) async {
-    final update = <String, dynamic>{'status': newStatus.firestoreValue};
-    if (newStatus == BookStatus.finished || newStatus == BookStatus.abandoned) {
-      update['dateFinished'] = DateTime.now().toIso8601String();
-    }
-    await _db.collection('books').doc(bookId).update(update);
+  final uid = _auth.currentUser!.uid;
+  final update = <String, dynamic>{'status': newStatus.firestoreValue};
+  if (newStatus == BookStatus.finished || newStatus == BookStatus.abandoned) {
+    update['dateFinished'] = DateTime.now().toIso8601String();
   }
+  await _db
+      .collection('users')
+      .doc(uid)
+      .collection('books')
+      .doc(bookId)
+      .update(update);
+}
 
   Future<void> updateBookChapter(String bookId, int chapter) async {
     await _db
@@ -746,7 +752,7 @@ Future<void> deleteClub(String clubId) async {
       coverUrl: coverUrl,
       method: BookSelectionMethod.election,
     );
-    
+
     await batch.commit();
 
     try {
@@ -763,6 +769,55 @@ Future<void> deleteClub(String clubId) async {
       debugPrint('Activity write failed: $e');
     }
   }
+
+  Future<void> updateElectionVotingDate({
+  required String clubId,
+  required String electionId,
+  required DateTime newVotingDate,
+}) async {
+  await _db
+      .collection('clubs')
+      .doc(clubId)
+      .collection('elections')
+      .doc(electionId)
+      .update({'votingDate': newVotingDate.toUtc().toIso8601String()});
+}
+
+Future<void> updateElectionVotingEndTime({
+  required String clubId,
+  required String electionId,
+  required DateTime newVotingEndTime,
+}) async {
+  await _db
+      .collection('clubs')
+      .doc(clubId)
+      .collection('elections')
+      .doc(electionId)
+      .update({'votingEndTime': newVotingEndTime.toUtc().toIso8601String()});
+}
+
+Future<void> deleteElection({
+  required String clubId,
+  required String electionId,
+}) async {
+  final electionRef = _db
+      .collection('clubs')
+      .doc(clubId)
+      .collection('elections')
+      .doc(electionId);
+
+  final nominations = await electionRef.collection('nominations').get();
+  final votes = await electionRef.collection('votes').get();
+
+  final batch = _db.batch();
+  for (final doc in nominations.docs) batch.delete(doc.reference);
+  for (final doc in votes.docs) batch.delete(doc.reference);
+  batch.delete(electionRef);
+  batch.update(_db.collection('clubs').doc(clubId), {
+    'activeElectionId': null,
+  });
+  await batch.commit();
+}
 
   Future<void> leaveClub(String clubId) async {
     final uid = _auth.currentUser!.uid;

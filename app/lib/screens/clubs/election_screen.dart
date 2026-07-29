@@ -69,17 +69,26 @@ class _ElectionBody extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 221, 209, 153),
       appBar: AppBar(
-        backgroundColor: const Color.fromARGB(255, 207, 178, 141),
-        elevation: 0,
-        title: const Text(
-          'Vote for the Next Book',
-          style: TextStyle(
-              color: Color.fromARGB(255, 70, 40, 20),
-              fontWeight: FontWeight.w600),
-        ),
-        iconTheme:
-            const IconThemeData(color: Color.fromARGB(255, 110, 60, 60)),
-      ),
+  backgroundColor: const Color.fromARGB(255, 207, 178, 141),
+  elevation: 0,
+  title: const Text(
+    'Vote for the Next Book',
+    style: TextStyle(
+        color: Color.fromARGB(255, 70, 40, 20),
+        fontWeight: FontWeight.w600),
+  ),
+  iconTheme:
+      const IconThemeData(color: Color.fromARGB(255, 110, 60, 60)),
+  actions: isOwner && !election.isClosed
+      ? [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined,
+                color: Color.fromARGB(255, 110, 60, 60)),
+            onPressed: () => _showOwnerOptions(context, election),
+          ),
+        ]
+      : null,
+    ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection('clubs')
@@ -135,6 +144,157 @@ class _ElectionBody extends StatelessWidget {
       ),
     );
   }
+
+  void _showOwnerOptions(BuildContext context, Election election) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: const Color.fromARGB(255, 250, 243, 220),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) => Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Manage Election',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color.fromARGB(255, 70, 40, 20),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (election.isNominating)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.calendar_today_outlined,
+                  color: Color.fromARGB(255, 110, 60, 60)),
+              title: const Text('Change nominations close date'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _pickNewVotingDate(context, election);
+              },
+            ),
+          if (election.isVoting)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.schedule_outlined,
+                  color: Color.fromARGB(255, 110, 60, 60)),
+              title: const Text('Extend voting deadline'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _pickNewVotingEndTime(context, election);
+              },
+            ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text('Delete election',
+                style: TextStyle(color: Colors.red)),
+            onTap: () async {
+              Navigator.pop(ctx);
+              await _confirmDelete(context, election);
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<void> _pickNewVotingDate(BuildContext context, Election election) async {
+  final now = DateTime.now();
+  final picked = await showDatePicker(
+    context: context,
+    initialDate: election.votingDate.isAfter(now)
+        ? election.votingDate
+        : now.add(const Duration(days: 1)),
+    firstDate: now.add(const Duration(days: 1)),
+    lastDate: now.add(const Duration(days: 365)),
+  );
+  if (picked == null || !context.mounted) return;
+  await context.read<StateModel>().updateElectionVotingDate(
+        clubId: club.id,
+        electionId: election.id,
+        newVotingDate: picked,
+      );
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Nominations close date updated.')),
+    );
+  }
+}
+
+Future<void> _pickNewVotingEndTime(
+    BuildContext context, Election election) async {
+  final now = DateTime.now();
+  final pickedDate = await showDatePicker(
+    context: context,
+    initialDate: election.votingEndTime.isAfter(now)
+        ? election.votingEndTime
+        : now.add(const Duration(days: 1)),
+    firstDate: now,
+    lastDate: now.add(const Duration(days: 365)),
+  );
+  if (pickedDate == null || !context.mounted) return;
+
+  final pickedTime = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(election.votingEndTime),
+  );
+  if (pickedTime == null || !context.mounted) return;
+
+  final newEndTime = DateTime(
+    pickedDate.year, pickedDate.month, pickedDate.day,
+    pickedTime.hour, pickedTime.minute,
+  );
+  await context.read<StateModel>().updateElectionVotingEndTime(
+        clubId: club.id,
+        electionId: election.id,
+        newVotingEndTime: newEndTime,
+      );
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Voting deadline updated.')),
+    );
+  }
+}
+
+Future<void> _confirmDelete(BuildContext context, Election election) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: const Color.fromARGB(255, 250, 243, 220),
+      title: const Text('Delete election?',
+          style: TextStyle(color: Color.fromARGB(255, 70, 40, 20))),
+      content: const Text(
+        'This will permanently remove the election, all nominations, and all votes.',
+        style: TextStyle(color: Color.fromARGB(200, 70, 40, 20)),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true && context.mounted) {
+    await context.read<StateModel>().deleteElection(
+          clubId: club.id,
+          electionId: election.id,
+        );
+    if (context.mounted) Navigator.of(context).pop();
+  }
+}
 }
 
 class _NominatingView extends StatelessWidget {
@@ -147,14 +307,15 @@ class _NominatingView extends StatelessWidget {
     required this.club,
     required this.election,
     required this.nominations,
-    required this.uid,
+    required this.uid,  
   });
 
   void _openPicker(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => BookSearchScreen(
-          onBookSelected: (result) async {
+  clubId: club.id,
+  onBookSelected: (result) async {
             await context.read<StateModel>().submitNomination(
                   clubId: club.id,
                   electionId: election.id,

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:app/models/appState.dart';
 import 'package:app/models/book_model.dart';
 import 'package:app/services/google_books_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -12,7 +13,8 @@ const _fetchCoverUrl =
 
 class BookSearchScreen extends StatefulWidget {
   final void Function(BookSearchResult)? onBookSelected;
-  const BookSearchScreen({super.key, this.onBookSelected});
+  final String? clubId;
+  const BookSearchScreen({super.key, this.onBookSelected, this.clubId});
 
   @override
   State<BookSearchScreen> createState() => _BookSearchScreenState();
@@ -21,10 +23,32 @@ class BookSearchScreen extends StatefulWidget {
 class _BookSearchScreenState extends State<BookSearchScreen> {
   final _searchController = TextEditingController();
   final _googleBooksService = GoogleBooksService();
+  Set<String> _clubReadIds = {};
 
   List<BookSearchResult> _results = [];
   bool _isLoading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.clubId != null) {
+      FirebaseFirestore.instance
+          .collection('clubs')
+          .doc(widget.clubId)
+          .collection('libraryBooks')
+          .get()
+          .then((snap) {
+        if (mounted) {
+          setState(() {
+            _clubReadIds = snap.docs
+                .map((d) => d.data()['googleBooksId'] as String)
+                .toSet();
+          });
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -138,9 +162,9 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
 
   void _showAddDialog(BookSearchResult result) {
     if (widget.onBookSelected != null) {
-    widget.onBookSelected!(result);
-    return;
-  }
+      widget.onBookSelected!(result);
+      return;
+    }
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color.fromARGB(255, 250, 243, 220),
@@ -323,8 +347,12 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
                                     color: Color.fromARGB(60, 110, 60, 60)),
                                 itemBuilder: (context, index) {
                                   final result = _results[index];
-                                  final inLibrary = state.books.any((b) =>
-                                      b.googleBooksId == result.googleBooksId);
+                                  final inLibrary = widget.clubId != null
+                                      ? _clubReadIds
+                                          .contains(result.googleBooksId)
+                                      : state.books.any((b) =>
+                                          b.googleBooksId ==
+                                          result.googleBooksId);
                                   return ListTile(
                                     contentPadding:
                                         const EdgeInsets.symmetric(vertical: 8),
@@ -371,8 +399,10 @@ class _BookSearchScreenState extends State<BookSearchScreen> {
                                         ),
                                         if (inLibrary) ...[
                                           const SizedBox(height: 3),
-                                          const Text(
-                                            'Already in your library',
+                                          Text(
+                                            widget.clubId != null
+                                                ? 'Already read by this club'
+                                                : 'Already in your library',
                                             style: TextStyle(
                                               fontSize: 11,
                                               color: Color.fromARGB(
